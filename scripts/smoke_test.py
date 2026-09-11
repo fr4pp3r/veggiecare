@@ -143,6 +143,13 @@ def main() -> int:
     j = r.get_json(silent=True) or {}
     check("POST /api/pest/simulate", r.status_code == 200 and j.get("ok") is True, str(j))
 
+    # History endpoints (read-only, must return JSON lists)
+    for path in ("/api/events", "/api/readings/npk", "/api/readings/moisture",
+                 "/api/activations", "/api/detections"):
+        r = client.get(path)
+        ok = r.status_code == 200 and isinstance(r.get_json(silent=True), list)
+        check(f"GET {path}", ok, f"status={r.status_code}")
+
     # Static assets
     for path in ("/static/style.css", "/static/app.js"):
         r = client.get(path)

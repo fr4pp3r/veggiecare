@@ -15,8 +15,14 @@
     </div>
   </header>
 
+  <nav class="nav-tabs" aria-label="Views">
+    <button class="nav-tab active" data-view="overview" type="button">Overview</button>
+    <button class="nav-tab" data-view="logs" type="button">Logs</button>
+  </nav>
+
   <main class="container">
-    <section id="alerts" class="card alerts-card" aria-live="polite">
+    <div id="view-overview">
+      <section id="alerts" class="card alerts-card" aria-live="polite">
       <header class="card-header">
         <h2>Alerts</h2>
         <button id="clear-alerts" class="btn btn-ghost btn-sm" aria-label="Clear alerts">Clear</button>
@@ -119,6 +125,36 @@
           <button id="btn-pause" class="btn btn-secondary">Pause Automation</button>
           <button id="btn-resume" class="btn btn-primary hidden">Resume Automation</button>
         </div>
+      </section>
+      </div>
+    </div>
+
+    <div id="view-logs" class="hidden">
+      <section id="logs" class="card">
+        <header class="card-header">
+          <h2>Sensor Logs</h2>
+          <div class="logs-toolbar">
+            <label class="limit-label">Rows
+              <select id="logs-limit">
+                <option value="25">25</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+              </select>
+            </label>
+            <button id="logs-refresh" class="btn btn-ghost btn-sm" type="button">Refresh</button>
+          </div>
+        </header>
+        <div class="sub-tabs" role="tablist">
+          <button class="sub-tab active" data-log="readings" type="button">Readings</button>
+          <button class="sub-tab" data-log="activations" type="button">Activations</button>
+          <button class="sub-tab" data-log="events" type="button">Events</button>
+          <button class="sub-tab" data-log="detections" type="button">Detections</button>
+        </div>
+        <div class="log-panel" id="log-readings" role="region"></div>
+        <div class="log-panel hidden" id="log-activations" role="region"></div>
+        <div class="log-panel hidden" id="log-events" role="region"></div>
+        <div class="log-panel hidden" id="log-detections" role="region"></div>
       </section>
     </div>
   </main>

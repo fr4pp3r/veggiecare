@@ -44,6 +44,16 @@
     sysAuto: n('sys-auto'),
     btnPause: n('btn-pause'),
     btnResume: n('btn-resume'),
+    navTabs: document.querySelectorAll('.nav-tab'),
+    subTabs: document.querySelectorAll('.sub-tab'),
+    logsLimit: n('logs-limit'),
+    logsRefresh: n('logs-refresh'),
+    logPanels: {
+      readings: n('log-readings'),
+      activations: n('log-activations'),
+      events: n('log-events'),
+      detections: n('log-detections'),
+    },
   };
 
   function n(sel) { return document.querySelector(sel); }
@@ -51,6 +61,7 @@
   // State
   let alertId = 0;
   let knownAlertKeys = new Set();
+  let activeView = 'overview';
 
   // Helpers
   function fmtTime(iso) {
@@ -106,6 +117,7 @@
       console.error('Poll failed:', e);
       addAlert('error', 'Dashboard', `Failed to fetch state: ${e.message}`);
     }
+    if (activeView === 'logs') loadLogs();
   }
 
   // Render
@@ -360,6 +372,139 @@
     return s.replace(/[&<>"']/g, c => ({'&':'&','<':'<','>':'>','"':'"',"'":'''}[c]));
   }
 
+  // ------------------------------------------------------------------
+  // Logs view
+  // ------------------------------------------------------------------
+
+  function logLimit() { return parseInt(els.logsLimit.value, 10) || 50; }
+
+  async function loadLogs() {
+    const limit = logLimit();
+    const [npk, moist, act, evt, det] = await Promise.allSettled([
+      fetchJson(`${API}/readings/npk?limit=${limit}`),
+      fetchJson(`${API}/readings/moisture?limit=${limit}`),
+      fetchJson(`${API}/activations?limit=${limit}`),
+      fetchJson(`${API}/events?limit=${limit}`),
+      fetchJson(`${API}/detections?limit=${limit}`),
+    ]);
+
+    if (npk.status === 'fulfilled' && moist.status === 'fulfilled') {
+      renderReadings(mergeReadings(npk.value, moist.value));
+    } else {
+      renderLogError(els.logPanels.readings, 'Failed to load readings');
+    }
+
+    act.status === 'fulfilled'
+      ? renderActivations(act.value)
+      : renderLogError(els.logPanels.activations, 'Failed to load activations');
+
+    evt.status === 'fulfilled'
+      ? renderEvents(evt.value)
+      : renderLogError(els.logPanels.events, 'Failed to load events');
+
+    det.status === 'fulfilled'
+      ? renderDetections(det.value)
+      : renderLogError(els.logPanels.detections, 'Failed to load detections');
+  }
+
+  function mergeReadings(npkRows, moistRows) {
+    const byTs = new Map();
+    for (const r of npkRows) {
+      byTs.set(r.timestamp, { timestamp: r.timestamp, nitrogen: r.nitrogen, phosphorus: r.phosphorus, potassium: r.potassium });
+    }
+    for (const r of moistRows) {
+      const row = byTs.get(r.timestamp);
+      if (row) row.moisture = r.moisture;
+      else byTs.set(r.timestamp, { timestamp: r.timestamp, moisture: r.moisture });
+    }
+    return [...byTs.values()].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  }
+
+  function logTable(headers, rowsHtml, emptyText) {
+    if (!rowsHtml.length) return `<p class="log-empty">${emptyText}</p>`;
+    const thead = headers.map(h => `<th>${h}</th>`).join('');
+    return `<div class="log-table-wrap"><table class="log-table"><thead><tr>${thead}</tr></thead><tbody>${rowsHtml.join('')}</tbody></table></div>`;
+  }
+
+  function fmtNum(v) {
+    if (v === null || v === undefined) return '—';
+    return Number.isInteger(v) ? String(v) : Number(v).toFixed(1);
+  }
+
+  function renderReadings(rows) {
+    const html = rows.map(r => `<tr>
+      <td class="time">${fmtTime(r.timestamp)}</td>
+      <td class="num">${fmtNum(r.nitrogen)}</td>
+      <td class="num">${fmtNum(r.phosphorus)}</td>
+      <td class="num">${fmtNum(r.potassium)}</td>
+      <td class="num">${fmtNum(r.moisture)}</td>
+    </tr>`);
+    els.logPanels.readings.innerHTML = logTable(
+      ['Time', 'N (mg/kg)', 'P (mg/kg)', 'K (mg/kg)', 'Moisture (%)'],
+      html, 'No readings recorded yet.',
+    );
+  }
+
+  function renderActivations(rows) {
+    const html = rows.map(r => `<tr>
+      <td class="time">${fmtTime(r.timestamp)}</td>
+      <td>${escapeHtml(r.relay_name || '—')}</td>
+      <td><span class="log-badge ${escapeHtml(r.trigger_type)}">${escapeHtml(r.trigger_type)}</span></td>
+      <td class="num">${r.duration_seconds != null ? r.duration_seconds + 's' : '—'}</td>
+      <td>${escapeHtml(r.source || '—')}</td>
+    </tr>`);
+    els.logPanels.activations.innerHTML = logTable(
+      ['Time', 'Relay', 'Trigger', 'Duration', 'Source'],
+      html, 'No relay activations logged yet.',
+    );
+  }
+
+  function renderEvents(rows) {
+    const html = rows.map(r => `<tr>
+      <td class="time">${fmtTime(r.timestamp)}</td>
+      <td><span class="log-badge ${escapeHtml(String(r.level).toLowerCase())}">${escapeHtml(r.level)}</span></td>
+      <td>${escapeHtml(r.source || '—')}</td>
+      <td>${escapeHtml(r.message)}</td>
+    </tr>`);
+    els.logPanels.events.innerHTML = logTable(
+      ['Time', 'Level', 'Source', 'Message'],
+      html, 'No system events logged yet.',
+    );
+  }
+
+  function renderDetections(rows) {
+    const html = rows.map(r => `<tr>
+      <td class="time">${fmtTime(r.timestamp)}</td>
+      <td><span class="log-badge ${r.detected ? 'detected' : 'none'}">${r.detected ? 'Detected' : 'None'}</span></td>
+      <td>${r.pest_class ? escapeHtml(r.pest_class) : '—'}</td>
+      <td class="num">${r.confidence != null ? (r.confidence * 100).toFixed(0) + '%' : '—'}</td>
+      <td>${r.model ? escapeHtml(r.model) : '—'}</td>
+    </tr>`);
+    els.logPanels.detections.innerHTML = logTable(
+      ['Time', 'Result', 'Pest', 'Confidence', 'Model'],
+      html, 'No pest detections logged yet.',
+    );
+  }
+
+  function renderLogError(panel, message) {
+    panel.innerHTML = `<p class="log-error">${escapeHtml(message)}</p>`;
+  }
+
+  function switchView(view) {
+    activeView = view;
+    els.navTabs.forEach(t => t.classList.toggle('active', t.dataset.view === view));
+    document.getElementById('view-overview').classList.toggle('hidden', view !== 'overview');
+    document.getElementById('view-logs').classList.toggle('hidden', view !== 'logs');
+    if (view === 'logs') loadLogs();
+  }
+
+  function switchLogTab(log) {
+    els.subTabs.forEach(t => t.classList.toggle('active', t.dataset.log === log));
+    for (const [key, panel] of Object.entries(els.logPanels)) {
+      panel.classList.toggle('hidden', key !== log);
+    }
+  }
+
   // Actions
   async function activateRelay(id) {
     try {
@@ -414,6 +559,10 @@
     els.alertsList.innerHTML = '';
     knownAlertKeys.clear();
   });
+  els.navTabs.forEach(t => t.addEventListener('click', () => switchView(t.dataset.view)));
+  els.subTabs.forEach(t => t.addEventListener('click', () => switchLogTab(t.dataset.log)));
+  els.logsRefresh.addEventListener('click', loadLogs);
+  els.logsLimit.addEventListener('change', loadLogs);
 
   // Start
   poll();

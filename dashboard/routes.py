@@ -190,3 +190,12 @@ def api_activation_history():
         return jsonify([]), 200
     limit = request.args.get("limit", 100, type=int)
     return jsonify(db.activation_history(limit=limit))
+
+
+@bp.route("/api/detections")
+def api_detections():
+    db = getattr(current_app, "veggiecare_db", None)
+    if db is None:
+        return jsonify([]), 200
+    limit = request.args.get("limit", 50, type=int)
+    return jsonify(db.recent_pest_detections(limit=limit))

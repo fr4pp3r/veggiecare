@@ -127,3 +127,42 @@ def test_api_pest_simulate(test_app):
     assert data["ok"] is True
     assert data["detected"] is True
     assert data["pest_class"] == "aphid"
+
+
+def test_api_detections_empty_without_db(test_app):
+    """Without a DB attached, history endpoints return an empty list."""
+    client = test_app.test_client()
+    resp = client.get("/api/detections")
+    assert resp.status_code == 200
+    assert resp.get_json() == []
+
+
+def test_api_detections_populated(tmp_path):
+    """With a real DB, /api/detections returns pest-detection log rows."""
+    from database.database import Database
+
+    from config.config import default_config
+
+    db = Database(tmp_path / "detections.db")
+    db.insert_pest_detection(
+        detected=True, pest_class="aphid", confidence=0.91,
+        image_path=None, model="mock", camera="mock",
+    )
+    try:
+        cfg = default_config()
+        cfg["system"]["simulate_hardware"] = True
+        state = SystemState(cfg)
+        app = create_app(state=state, config=cfg, controller=None, db=db)
+        app.config["TESTING"] = True
+        client = app.test_client()
+
+        resp = client.get("/api/detections")
+        assert resp.status_code == 200
+        rows = resp.get_json()
+        assert len(rows) == 1
+        assert rows[0]["detected"] == 1
+        assert rows[0]["pest_class"] == "aphid"
+        assert rows[0]["confidence"] == 0.91
+        assert rows[0]["model"] == "mock"
+    finally:
+        db.close()
