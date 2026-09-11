@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VeggieCare Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="header">
+    <h1>VeggieCare</h1>
+    <div class="header-meta">
+      <span id="uptime">Starting…</span>
+      <span id="mode-badge" class="badge"></span>
+    </div>
+  </header>
+
+  <main class="container">
+    <section id="alerts" class="card alerts-card" aria-live="polite">
+      <header class="card-header">
+        <h2>Alerts</h2>
+        <button id="clear-alerts" class="btn btn-ghost btn-sm" aria-label="Clear alerts">Clear</button>
+      </header>
+      <div class="alerts-list" role="log"></div>
+    </section>
+
+    <div class="grid">
+      <section id="npk" class="card">
+        <header class="card-header"><h2>NPK Sensor</h2></header>
+        <div class="sensor-grid">
+          <div class="sensor-item" data-nutrient="nitrogen">
+            <span class="label">Nitrogen (N)</span>
+            <span class="value" id="npk-n">—</span>
+            <span class="unit">mg/kg</span>
+            <span class="threshold" id="npk-th-n">threshold: —</span>
+            <span class="status" id="npk-st-n"></span>
+          </div>
+          <div class="sensor-item" data-nutrient="phosphorus">
+            <span class="label">Phosphorus (P)</span>
+            <span class="value" id="npk-p">—</span>
+            <span class="unit">mg/kg</span>
+            <span class="threshold" id="npk-th-p">threshold: —</span>
+            <span class="status" id="npk-st-p"></span>
+          </div>
+          <div class="sensor-item" data-nutrient="potassium">
+            <span class="label">Potassium (K)</span>
+            <span class="value" id="npk-k">—</span>
+            <span class="unit">mg/kg</span>
+            <span class="threshold" id="npk-th-k">threshold: —</span>
+            <span class="status" id="npk-st-k"></span>
+          </div>
+        </div>
+        <div class="card-actions">
+          <button id="btn-relay1" class="btn btn-primary" disabled>Activate Fertilizer (Relay 1)</button>
+          <span class="hint">Manual only — activates for <span id="r1-dur">—</span>s</span>
+        </div>
+        <p class="meta" id="npk-meta">Last reading: —</p>
+      </section>
+
+      <section id="moisture" class="card">
+        <header class="card-header"><h2>Soil Moisture</h2></header>
+        <div class="sensor-main">
+          <span class="label">Moisture</span>
+          <span class="value large" id="moist-val">—</span>
+          <span class="unit">%</span>
+        </div>
+        <div class="threshold-bar">
+          <div class="bar-bg">
+            <div class="bar-fill" id="moist-bar"></div>
+            <div class="bar-threshold" id="moist-th-line"></div>
+          </div>
+          <div class="threshold-labels">
+            <span id="moist-th-label">Threshold: —%</span>
+            <span id="moist-status" class="status"></span>
+          </div>
+        </div>
+        <div class="usage-info">
+          <span>Monthly watering: <strong id="moist-used">—</strong> / <strong id="moist-max">—</strong></span>
+          <span id="moist-remaining" class="remaining">Remaining: —</span>
+        </div>
+        <p class="meta" id="moist-meta">Last reading: — | Last watering: —</p>
+      </section>
+
+      <section id="relays" class="card">
+        <header class="card-header"><h2>Relays</h2></header>
+        <div class="relay-grid" id="relay-grid"></div>
+        <div class="card-actions">
+          <button id="btn-emergency" class="btn btn-danger">EMERGENCY STOP — All Relays OFF</button>
+        </div>
+      </section>
+
+      <section id="pest" class="card">
+        <header class="card-header"><h2>Pest Detection</h2></header>
+        <div id="pest-status" class="pest-status">Not configured / Camera not installed</div>
+        <div id="pest-details" class="pest-details hidden"></div>
+        <div class="card-actions" id="pest-sim-controls" style="display:none;">
+          <label>Pest class: <select id="sim-pest-class">
+            <option value="aphid">Aphid</option>
+            <option value="caterpillar">Caterpillar</option>
+            <option value="fungus">Fungus</option>
+          </select></label>
+          <label>Confidence: <input type="range" id="sim-confidence" min="0.5" max="1" step="0.01" value="0.85"><span id="sim-conf-val">0.85</span></label>
+          <button id="btn-sim-pest" class="btn btn-secondary">Simulate Detection</button>
+        </div>
+      </section>
+
+      <section id="system" class="card">
+        <header class="card-header"><h2>System Status</h2></header>
+        <dl class="sys-grid">
+          <dt>Uptime</dt><dd id="sys-uptime">—</dd>
+          <dt>Database</dt><dd id="sys-db"><span class="status"></span></dd>
+          <dt>NPK Sensor</dt><dd id="sys-npk"><span class="status"></span></dd>
+          <dt>Moisture Sensor</dt><dd id="sys-moist"><span class="status"></span></dd>
+          <dt>Camera</dt><dd id="sys-cam"><span class="status"></span></dd>
+          <dt>Pest Model</dt><dd id="sys-pest"><span class="status"></span></dd>
+          <dt>Automation</dt><dd id="sys-auto"><span class="status"></span></dd>
+        </dl>
+        <div class="card-actions">
+          <button id="btn-pause" class="btn btn-secondary">Pause Automation</button>
+          <button id="btn-resume" class="btn btn-primary hidden">Resume Automation</button>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

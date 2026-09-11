@@ -1,0 +1,421 @@
+/* VeggieCare Dashboard — vanilla JS, no dependencies */
+
+(() => {
+  const API = '/api';
+  const POLL_MS = 5000;
+
+  // DOM references
+  const els = {
+    uptime: document.getElementById('uptime'),
+    modeBadge: document.getElementById('mode-badge'),
+    alertsList: document.querySelector('.alerts-list'),
+    clearAlerts: document.getElementById('clear-alerts'),
+    npk: { n: n('npk-n'), p: n('npk-p'), k: n('npk-k') },
+    npkTh: { n: n('npk-th-n'), p: n('npk-th-p'), k: n('npk-th-k') },
+    npkSt: { n: n('npk-st-n'), p: n('npk-st-p'), k: n('npk-st-k') },
+    npkItems: { n: n('[data-nutrient="nitrogen"]'), p: n('[data-nutrient="phosphorus"]'), k: n('[data-nutrient="potassium"]') },
+    btnR1: n('btn-relay1'),
+    r1Dur: n('r1-dur'),
+    npkMeta: n('npk-meta'),
+    moistVal: n('moist-val'),
+    moistBar: n('moist-bar'),
+    moistThLine: n('moist-th-line'),
+    moistThLabel: n('moist-th-label'),
+    moistStatus: n('moist-status'),
+    moistUsed: n('moist-used'),
+    moistMax: n('moist-max'),
+    moistRemaining: n('moist-remaining'),
+    moistMeta: n('moist-meta'),
+    relayGrid: n('relay-grid'),
+    btnEmergency: n('btn-emergency'),
+    pestStatus: n('pest-status'),
+    pestDetails: n('pest-details'),
+    pestSimControls: n('pest-sim-controls'),
+    simPestClass: n('sim-pest-class'),
+    simConfidence: n('sim-confidence'),
+    simConfVal: n('sim-conf-val'),
+    btnSimPest: n('btn-sim-pest'),
+    sysUptime: n('sys-uptime'),
+    sysDb: n('sys-db'),
+    sysNpk: n('sys-npk'),
+    sysMoist: n('sys-moist'),
+    sysCam: n('sys-cam'),
+    sysPest: n('sys-pest'),
+    sysAuto: n('sys-auto'),
+    btnPause: n('btn-pause'),
+    btnResume: n('btn-resume'),
+  };
+
+  function n(sel) { return document.querySelector(sel); }
+
+  // State
+  let alertId = 0;
+  let knownAlertKeys = new Set();
+
+  // Helpers
+  function fmtTime(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  function fmtDuration(ms) {
+    if (ms < 1000) return `${ms}ms`;
+    const s = Math.floor(ms / 1000);
+    const m = Math.floor(s / 60);
+    const h = Math.floor(m / 60);
+    if (h) return `${h}h ${m % 60}m`;
+    if (m) return `${m}m ${s % 60}s`;
+    return `${s}s`;
+  }
+
+  function uptimeStr(seconds) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return `${h}h ${m}m ${s}s`;
+  }
+
+  function statusDot(ok) {
+    const span = document.createElement('span');
+    span.className = 'status ' + (ok ? 'ok' : 'error');
+    return span;
+  }
+
+  // API
+  async function fetchJson(url, options = {}) {
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' }, ...options });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return res.json();
+  }
+
+  async function postJson(url, body = {}) {
+    return fetchJson(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
+
+  // Polling
+  async function poll() {
+    try {
+      const data = await fetchJson(`${API}/state`);
+      render(data);
+    } catch (e) {
+      console.error('Poll failed:', e);
+      addAlert('error', 'Dashboard', `Failed to fetch state: ${e.message}`);
+    }
+  }
+
+  // Render
+  function render(data) {
+    // Header
+    els.uptime.textContent = `Uptime: ${uptimeStr(data.system.uptime_seconds)}`;
+    els.modeBadge.textContent = data.system.simulate_hardware ? 'SIMULATED' : 'LIVE';
+    els.modeBadge.className = 'badge ' + (data.system.simulate_hardware ? 'badge-simulated' : 'badge-real');
+
+    // NPK
+    const npk = data.sensors.npk;
+    const th = data.thresholds?.npk || {};
+    ['nitrogen', 'phosphorus', 'potassium'].forEach(nut => {
+      const key = nut[0]; // n, p, k
+      const val = npk[nut];
+      const below = npk.below?.[nut];
+      const threshold = th[nut];
+      const item = els.npkItems[key];
+      const valEl = els.npk[key];
+      const thEl = els.npkTh[key];
+      const stEl = els.npkSt[key];
+
+      if (val !== undefined && val !== null) {
+        valEl.textContent = val.toFixed(2);
+      } else {
+        valEl.textContent = '—';
+      }
+      thEl.textContent = threshold !== undefined ? `threshold: ${threshold} mg/kg` : 'threshold: —';
+      if (below) {
+        item.classList.add('below');
+        stEl.textContent = 'BELOW';
+        stEl.className = 'status below';
+      } else {
+        item.classList.remove('below');
+        stEl.textContent = 'OK';
+        stEl.className = 'status normal';
+      }
+    });
+
+    // Relay 1 button
+    const r1 = data.relays.find(r => r.id === 1);
+    if (r1) {
+      els.btnR1.disabled = !r1.available || r1.state === 'on';
+      els.r1Dur.textContent = r1.activation_duration_seconds || '—';
+    }
+    els.npkMeta.textContent = `Last reading: ${fmtTime(npk.timestamp)}`;
+
+    // Moisture
+    const moist = data.sensors.moisture;
+    if (moist.value !== null && moist.value !== undefined) {
+      els.moistVal.textContent = moist.value.toFixed(1);
+      els.moistVal.className = 'value large' + (moist.below ? ' below' : '');
+      const pct = Math.max(0, Math.min(100, moist.value));
+      els.moistBar.style.width = `${pct}%`;
+      const th = data.thresholds?.moisture || 30;
+      els.moistThLabel.textContent = `Threshold: ${th}%`;
+      els.moistThLine.style.left = `${Math.max(0, Math.min(100, th))}%`;
+      if (moist.below) {
+        els.moistStatus.textContent = 'BELOW THRESHOLD';
+        els.moistStatus.className = 'status below';
+      } else {
+        els.moistStatus.textContent = 'Normal';
+        els.moistStatus.className = 'status normal';
+      }
+    } else {
+      els.moistVal.textContent = '—';
+      els.moistVal.className = 'value large';
+      els.moistBar.style.width = '0%';
+      els.moistThLine.style.left = '0%';
+    }
+
+    // Usage
+    const usage = data.usage;
+    if (usage) {
+      els.moistUsed.textContent = usage.used;
+      els.moistMax.textContent = usage.max;
+      const rem = usage.remaining;
+      els.moistRemaining.textContent = `Remaining: ${rem}`;
+      els.moistRemaining.className = 'remaining' +
+        (rem <= 0 ? ' critical' : rem <= 1 ? ' low' : '');
+    }
+
+    els.moistMeta.textContent = `Last reading: ${fmtTime(moist.timestamp)} | Last watering: —`;
+
+    // Relays
+    renderRelays(data.relays);
+
+    // Pest
+    renderPest(data.pest);
+
+    // System
+    renderSystem(data);
+
+    // Automation
+    renderAutomation(data.automation);
+
+    // Alerts
+    renderAlerts(data.alerts);
+  }
+
+  function renderRelays(relays) {
+    els.relayGrid.innerHTML = '';
+    relays.forEach(r => {
+      const card = document.createElement('div');
+      card.className = `relay-card ${r.state} ${r.available ? '' : 'unavailable'}`;
+      const dur = r.activated_at && r.duration
+        ? Math.max(0, Math.floor(r.duration - (Date.now() / 1000 - new Date(r.activated_at).getTime() / 1000)))
+        : 0;
+      card.innerHTML = `
+        <div class="relay-header">
+          <span class="relay-name">${r.label || r.name} (Relay ${r.id})</span>
+          <span class="relay-pin">GPIO ${r.pin}</span>
+        </div>
+        <span class="relay-state ${r.state}">${r.state.toUpperCase()}</span>
+        ${r.state === 'on' ? `<div class="relay-duration">Auto-off in ${fmtDuration(dur * 1000)}</div>` : ''}
+        <div class="relay-actions">
+          <button class="btn btn-primary ${r.state === 'on' || !r.available ? 'hidden' : ''}" data-on="${r.id}">ON</button>
+          <button class="btn btn-secondary ${r.state === 'off' ? 'hidden' : ''}" data-off="${r.id}">OFF</button>
+        </div>
+      `;
+      els.relayGrid.appendChild(card);
+    });
+
+    // Event delegation
+    els.relayGrid.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-on],[data-off]');
+      if (!btn) return;
+      const id = parseInt(btn.dataset.on || btn.dataset.off, 10);
+      if (btn.dataset.on) await activateRelay(id);
+      else await deactivateRelay(id);
+    });
+  }
+
+  function renderPest(pest) {
+    if (!pest.enabled || !pest.configured) {
+      els.pestStatus.textContent = 'Not configured / Camera not installed';
+      els.pestStatus.style.display = 'block';
+      els.pestDetails.classList.add('hidden');
+      els.pestSimControls.style.display = 'none';
+      return;
+    }
+    els.pestStatus.style.display = 'none';
+    els.pestDetails.classList.remove('hidden');
+    els.pestSimControls.style.display = 'flex';
+    els.pestDetails.innerHTML = `
+      <div class="pest-detail-row"><span class="label">Status</span><span class="value ${pest.detected ? 'detected' : 'not-detected'}">${pest.detected ? 'DETECTED' : 'None'}</span></div>
+      <div class="pest-detail-row"><span class="label">Class</span><span class="value">${pest.pest_class || '—'}</span></div>
+      <div class="pest-detail-row"><span class="label">Confidence</span><span class="value">${pest.confidence !== null ? (pest.confidence * 100).toFixed(1) + '%' : '—'}</span></div>
+      <div class="pest-detail-row"><span class="label">Model</span><span class="value">${pest.model || '—'}</span></div>
+      <div class="pest-detail-row"><span class="label">Last detection</span><span class="value">${fmtTime(pest.timestamp)}</span></div>
+    `;
+  }
+
+  function renderSystem(data) {
+    els.sysUptime.textContent = uptimeStr(data.system.uptime_seconds);
+    // DB
+    els.sysDb.querySelector('dd').innerHTML = '';
+    els.sysDb.querySelector('dd').appendChild(statusDot(data.database.ok));
+    els.sysDb.querySelector('dd').append(data.database.ok ? ' Connected' : ` Error: ${data.database.error || 'unknown'}`);
+
+    // NPK sensor
+    const npk = data.sensors.npk;
+    const npkOk = !npk.error && npk.last_success;
+    els.sysNpk.querySelector('dd').innerHTML = '';
+    els.sysNpk.querySelector('dd').appendChild(statusDot(npkOk));
+    els.sysNpk.querySelector('dd').append(npkOk ? ' OK' : ` Error: ${npk.error || 'no reading'}`);
+
+    // Moisture sensor
+    const moist = data.sensors.moisture;
+    const moistOk = !moist.error && moist.last_success;
+    els.sysMoist.querySelector('dd').innerHTML = '';
+    els.sysMoist.querySelector('dd').appendChild(statusDot(moistOk));
+    els.sysMoist.querySelector('dd').append(moistOk ? ' OK' : ` Error: ${moist.error || 'no reading'}`);
+
+    // Camera
+    els.sysCam.querySelector('dd').innerHTML = '';
+    const cam = data.camera;
+    if (cam.configured) {
+      els.sysCam.querySelector('dd').appendChild(statusDot(!cam.error));
+      els.sysCam.querySelector('dd').append(cam.error ? ` Error: ${cam.error}` : ' Connected');
+    } else {
+      els.sysCam.querySelector('dd').appendChild(statusDot(false));
+      els.sysCam.querySelector('dd').append(' Not installed');
+    }
+
+    // Pest model
+    els.sysPest.querySelector('dd').innerHTML = '';
+    const pest = data.pest;
+    if (pest.enabled && pest.configured) {
+      els.sysPest.querySelector('dd').appendChild(statusDot(!pest.error));
+      els.sysPest.querySelector('dd').append(pest.error ? ` Error: ${pest.error}` : ` Loaded (${pest.model})`);
+    } else {
+      els.sysPest.querySelector('dd').appendChild(statusDot(false));
+      els.sysPest.querySelector('dd').append(' Not configured');
+    }
+
+    // Automation
+    els.sysAuto.querySelector('dd').innerHTML = '';
+    const auto = data.automation;
+    if (auto.running) {
+      els.sysAuto.querySelector('dd').appendChild(statusDot(!auto.paused));
+      els.sysAuto.querySelector('dd').append(auto.paused ? ' Paused' : ' Running');
+    } else {
+      els.sysAuto.querySelector('dd').appendChild(statusDot(false));
+      els.sysAuto.querySelector('dd').append(' Stopped');
+    }
+  }
+
+  function renderAutomation(auto) {
+    if (auto.running && !auto.paused) {
+      els.btnPause.classList.remove('hidden');
+      els.btnResume.classList.add('hidden');
+    } else if (auto.running && auto.paused) {
+      els.btnPause.classList.add('hidden');
+      els.btnResume.classList.remove('hidden');
+    } else {
+      els.btnPause.classList.add('hidden');
+      els.btnResume.classList.add('hidden');
+    }
+  }
+
+  function renderAlerts(alerts) {
+    alerts.forEach(a => {
+      const key = `${a.timestamp}-${a.source}-${a.message}`;
+      if (knownAlertKeys.has(key)) return;
+      knownAlertKeys.add(key);
+      addAlertElement(a.level, a.message, a.source, a.timestamp);
+    });
+    // Keep only last 30
+    while (els.alertsList.children.length > 30) {
+      els.alertsList.removeChild(els.alertsList.lastChild);
+    }
+  }
+
+  function addAlertElement(level, message, source, timestamp) {
+    const div = document.createElement('div');
+    div.className = `alert-item ${level}`;
+    div.innerHTML = `
+      <span class="alert-level">${level.toUpperCase()}</span>
+      <span class="alert-message">${escapeHtml(message)}</span>
+      <span class="alert-meta">${source} • ${fmtTime(timestamp)}</span>
+    `;
+    els.alertsList.insertBefore(div, els.alertsList.firstChild);
+  }
+
+  function addAlert(level, source, message) {
+    const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    addAlertElement(level, message, source, timestamp);
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({'&':'&','<':'<','>':'>','"':'"',"'":'''}[c]));
+  }
+
+  // Actions
+  async function activateRelay(id) {
+    try {
+      const res = await postJson(`${API}/relays/${id}/activate`);
+      if (!res.ok) addAlert('error', 'Dashboard', res.message);
+    } catch (e) { addAlert('error', 'Dashboard', e.message); }
+  }
+
+  async function deactivateRelay(id) {
+    try {
+      await postJson(`${API}/relays/${id}/off`);
+    } catch (e) { addAlert('error', 'Dashboard', e.message); }
+  }
+
+  async function emergencyStop() {
+    if (!confirm('Force ALL relays OFF? This is an emergency stop.')) return;
+    try {
+      await postJson(`${API}/relays/all-off`);
+    } catch (e) { addAlert('error', 'Dashboard', e.message); }
+  }
+
+  async function pauseAutomation() {
+    try { await postJson(`${API}/automation/pause`); } catch (e) { addAlert('error', 'Dashboard', e.message); }
+  }
+
+  async function resumeAutomation() {
+    try { await postJson(`${API}/automation/resume`); } catch (e) { addAlert('error', 'Dashboard', e.message); }
+  }
+
+  async function simulatePest() {
+    try {
+      const res = await postJson(`${API}/pest/simulate`, {
+        detected: true,
+        pest_class: els.simPestClass.value,
+        confidence: parseFloat(els.simConfidence.value),
+      });
+      if (res.ok) addAlert('info', 'Dashboard', `Simulated ${res.pest_class} (${(res.confidence*100).toFixed(0)}%)`);
+      else addAlert('error', 'Dashboard', res.message);
+    } catch (e) { addAlert('error', 'Dashboard', e.message); }
+  }
+
+  // Event listeners
+  els.btnR1.addEventListener('click', () => activateRelay(1));
+  els.btnEmergency.addEventListener('click', emergencyStop);
+  els.btnPause.addEventListener('click', pauseAutomation);
+  els.btnResume.addEventListener('click', resumeAutomation);
+  els.btnSimPest.addEventListener('click', simulatePest);
+  els.simConfidence.addEventListener('input', () => {
+    els.simConfVal.textContent = parseFloat(els.simConfidence.value).toFixed(2);
+  });
+  els.clearAlerts.addEventListener('click', () => {
+    els.alertsList.innerHTML = '';
+    knownAlertKeys.clear();
+  });
+
+  // Start
+  poll();
+  setInterval(poll, POLL_MS);
+})();

@@ -1,0 +1,21 @@
+# ------------------------------------------------------------------
+# VeggieCare - Raspberry Pi 5 Smart Plant Monitoring and Control
+# core dependencies
+# ------------------------------------------------------------------
+
+PyYAML>=6.0
+Flask>=3.0
+waitress>=3.0
+minimalmodbus>=2.1
+pyserial>=3.5
+gpiozero>=2.0
+
+# Raspberry Pi only (Linux/ARM): required for the soil moisture sensor
+# (MCP3008 over SPI). If pip cannot build spidev on the Pi, install via:
+#   sudo apt install python3-spidev
+spidev>=3.6
+
+# ------------------------------------------------------------------
+# Development / testing only
+# ------------------------------------------------------------------
+pytest>=8.0

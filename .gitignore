@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.venv-test/
+venv/
+env/
+build/
+dist/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+tests/__pycache__/
+
+# Local runtime data — never commit sensor readings or logs
+data/
+logs/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.log
+
+# Raspberry Pi / local environment settings
+config/local.yaml
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Tooling indexes
+.codegraph/
+
+# OpenCode plans
+.omo/

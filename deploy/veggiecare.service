@@ -1,0 +1,37 @@
+[Unit]
+Description=VeggieCare — Raspberry Pi 5 Smart Plant Monitoring and Control
+Documentation=https://github.com/your-org/veggiecare
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/veggiecare
+Environment=VEGGIECARE_CONFIG=/home/pi/veggiecare/config/config.yaml
+Environment=PYTHONPATH=/home/pi/veggiecare
+ExecStart=/home/pi/veggiecare/.venv/bin/python /home/pi/veggiecare/app.py --host 0.0.0.0 --port 5000
+ExecStop=/bin/kill -TERM $MAINPID
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+TimeoutStopSec=10
+TimeoutStartSec=30
+
+# Security hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/home/pi/veggiecare/logs /home/pi/veggiecare/data
+# GPIO/serial/SPI access
+SupplementaryGroups=gpio dialout spi i2c
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=veggiecare
+
+[Install]
+WantedBy=multi-user.target

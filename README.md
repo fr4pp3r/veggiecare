@@ -1,0 +1,179 @@
+# VeggieCare
+
+Raspberry Pi 5 smart plant monitoring and control system.
+
+## Hardware
+
+| Component | Model | Interface | Pins / Config |
+|-----------|-------|-----------|---------------|
+| NPK Sensor | JXCT JXBS-3001 (7-in-1) | RS485 → USB (FTDI) | `/dev/ttyUSB0`, slave 1, 4800 8N1, Modbus RTU |
+| Soil Moisture | Capacitive probe | MCP3008 ADC (SPI) | SPI0 CE0, CH0, 3.3 V |
+| Relay 1 (Fertilizer) | 5 V module, active-high | GPIO 17 | `gpiozero.LED(17, active_high=True)` |
+| Relay 2 (Watering) | 5 V module, active-high | GPIO 27 | `gpiozero.LED(27, active_high=True)` |
+| Relay 3 (Pest) | 5 V module, active-high | GPIO 22 | `gpiozero.LED(22, active_high=True)` |
+| Camera | *not installed yet* | — | — |
+
+## Quick Start (Development)
+
+```bash
+# 1. Clone / copy project
+cd veggiecare
+
+# 2. Create virtual environment
+python -m venv .venv
+source .venv/bin/activate
+
+# 3. Install dependencies
+pip install -r requirements.txt
+
+# 4. Run in simulated mode (no hardware needed)
+python app.py --simulate
+
+# 5. Open dashboard
+# http://localhost:5000
+```
+
+## Configuration
+
+Edit `config/config.yaml`. All settings are validated at startup.
+
+Key sections:
+
+```yaml
+system:
+  simulate_hardware: false      # true for dev on non-Pi machines
+  timezone: Asia/Manila
+
+npk:
+  enabled: true
+  port: /dev/ttyUSB0
+  slave_id: 1
+  baudrate: 4800
+  thresholds:
+    nitrogen: 20      # mg/kg
+    phosphorus: 20
+    potassium: 20
+  read_interval_seconds: 300
+  log_interval_seconds: 900
+
+soil_moisture:
+  enabled: true
+  threshold: 30                 # %
+  max_activations_per_month: 2
+  watering_cooldown_seconds: 3600
+
+relays:
+  active_high: true
+  auto_off_watchdog_seconds: 600
+  items:
+    - id: 1; name: fertilizer; pin: 17; activation_duration_seconds: 120
+    - id: 2; name: watering;   pin: 27; activation_duration_seconds: 300
+    - id: 3; name: pest_response; pin: 22; activation_duration_seconds: 120
+
+pest_detection:
+  enabled: false                # set true when camera + model are ready
+  detector: mock
+  confidence_threshold: 0.70
+```
+
+## Dashboard
+
+- **URL**: `http://<pi-ip>:5000`
+- **Live updates**: polls `/api/state` every 5 s
+- **Sections**: NPK, Soil Moisture, Relays, Pest Detection, System Status, Alerts
+- **Manual controls**: Relay 1 (fertilizer) button, emergency stop, pause/resume automation, pest simulation
+
+## Deployment (systemd)
+
+```bash
+# 1. Copy project to Pi
+sudo cp -r veggiecare /home/pi/
+sudo chown -R pi:pi /home/pi/veggiecare
+
+# 2. Create venv & install
+cd /home/pi/veggiecare
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# 3. Install systemd unit
+sudo cp deploy/veggiecare.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable veggiecare
+sudo systemctl start veggiecare
+
+# 4. Check status
+sudo systemctl status veggiecare
+sudo journalctl -u veggiecare -f
+```
+
+The service runs as user `pi`, restarts on failure, and logs to the systemd journal.
+
+## Running Tests
+
+```bash
+# All tests (simulated hardware, no Pi required)
+pytest -v
+
+# Specific module
+pytest tests/test_database.py -v
+pytest tests/test_automation.py -v
+```
+
+Tests run entirely in simulated mode and cover:
+- Config loading & validation
+- Database schema & monthly activation counting
+- Relay watchdog auto-off
+- Automation rules (NPK alert, watering limit, pest → relay 3)
+- Mock pest detector modes
+- Dashboard API endpoints
+
+## Architecture
+
+```
+app.py
+├── config.load_config()  → validated config dict
+├── Database()            → SQLite (WAL mode, thread-safe)
+├── SystemState()         → shared in-memory state (RLock)
+├── Sensors (NPK, Moisture)  → lazy hardware imports, simulated fallback
+├── RelayController()     → gpiozero + watchdog thread (hard OFF at startup)
+├── AutomationController  → background thread: read → rules → actuate → log
+│   ├── NPK: alert only (no auto relay)
+│   ├── Moisture: auto-water with monthly limit + cooldown
+│   └── Pest: detect → relay 3 (when enabled)
+├── Pest Detector (mock)  → swappable interface
+└── Flask dashboard       → reads SystemState, never blocks on hardware
+```
+
+**Safety guarantees**:
+- All relays forced OFF at process start and on any exit (signal/atex)
+- Watchdog thread enforces max ON time per relay (configurable, default 600 s)
+- Database errors never crash the control loop
+- Automation can be paused from dashboard
+
+## Future Camera / AI Integration
+
+The pest detection module is already wired but disabled (`enabled: false`).
+
+When PiCamera 3 + model arrive:
+
+1. Implement `camera/camera.py:PiCamera.capture()` → save JPEG → return path
+2. Implement `pest_detection/detector.py:PestDetector.detect(image_path)` → run model → return `DetectionResult`
+3. Set `pest_detection.enabled: true` and `camera.enabled: true` in config
+4. Restart service — no other code changes needed
+
+## Troubleshooting
+
+| Symptom | Likely Cause | Fix |
+|---------|--------------|-----|
+| `gpiozero` import error | Not on Pi or missing libs | `pip install gpiozero lgpio` or run `--simulate` |
+| `spidev` build fails | Missing kernel headers | `sudo apt install python3-spidev` or `--simulate` |
+| NPK read fails | RS485 wiring / slave ID / baud | Check A/B lines, power, `ls /dev/ttyUSB*`, try `minimalmodbus` debug |
+| Moisture reads 0 | MCP3008 not powered / wrong channel | Check 3.3 V, GND, SPI enable (`dtparam=spi=on`), CH0 wiring |
+| Relays don't switch | `active_high` wrong | Flip `relays.active_high` in config |
+| Dashboard not loading | Port 5000 blocked / service down | `sudo systemctl status veggiecare`, check firewall |
+| DB locked | Multiple processes | Ensure only one `app.py` runs; WAL handles concurrent readers |
+
+## License
+
+MIT

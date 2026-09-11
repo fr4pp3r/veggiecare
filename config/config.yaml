@@ -1,0 +1,147 @@
+# ==================================================================
+# VeggieCare configuration
+# ==================================================================
+# All values are validated by config/config.py before the application
+# applies them. Edit this file, then restart VeggieCare.
+
+system:
+  name: VeggieCare
+  # Run with simulated hardware (no GPIO/serial/SPI). Use for development
+  # and testing on a PC. MUST be false on the Raspberry Pi.
+  simulate_hardware: false
+  timezone: Asia/Manila
+
+database:
+  # Paths are resolved relative to the project root when relative.
+  path: data/veggiecare.db
+
+logging:
+  level: INFO          # DEBUG | INFO | WARNING | ERROR
+  file: logs/veggiecare.log
+
+# ------------------------------------------------------------------
+# NPK sensor (RS485 Modbus RTU - JXCT JXBS-3001 7-in-1 soil sensor)
+# ------------------------------------------------------------------
+npk:
+  enabled: true
+  port: /dev/ttyUSB0
+  slave_id: 1
+  baudrate: 4800
+  timeout: 1.0
+  # Modbus holding registers: 0=Nitrogen, 1=Phosphorus, 2=Potassium
+  register_start: 0
+  register_count: 3
+  # Multiply raw register values by this factor.
+  # JXBS-3001 returns mg/kg directly, so the default is 1.0
+  scale: 1.0
+  # How often to read the sensor (updates the dashboard value)
+  read_interval_seconds: 300
+  # How often to persist a reading to the SQLite database
+  log_interval_seconds: 900
+  thresholds:
+    nitrogen: 20         # mg/kg, configurable
+    phosphorus: 20       # mg/kg, configurable
+    potassium: 20        # mg/kg, configurable
+  # Values returned when system.simulate_hardware is true
+  simulated:
+    nitrogen: 25
+    phosphorus: 15
+    potassium: 30
+
+# ------------------------------------------------------------------
+# Soil moisture sensor (MCP3008 ADC over SPI)
+# ------------------------------------------------------------------
+soil_moisture:
+  enabled: true
+  spi_bus: 0
+  spi_device: 0          # CE0
+  channel: 0             # moisture probe on CH0
+  adc_max: 1023
+  vref: 3.3
+  dry_adc: 500           # calibration: ADC reading in dry air
+  wet_adc: 50            # calibration: ADC reading in water
+  samples: 20            # readings averaged per measurement
+  read_interval_seconds: 30
+  log_interval_seconds: 300
+  # Relay 2 (watering) is activated automatically when moisture drops
+  # below this percentage.
+  threshold: 30          # percent
+  relay_id: 2
+  # Maximum automatic activations of Relay 2 per calendar month.
+  max_activations_per_month: 2
+  # Wait this long after a completed watering before the system may
+  # activate watering again (avoids re-triggering on a still-wet probe).
+  watering_cooldown_seconds: 3600
+  # Value returned when system.simulate_hardware is true
+  simulated:
+    moisture: 45
+
+# ------------------------------------------------------------------
+# Relays - gpiozero LED abstraction
+# ------------------------------------------------------------------
+relays:
+  # true if the relay module energizes on a HIGH GPIO signal,
+  # false for active-low modules.
+  active_high: true
+  # Hard failsafe: any relay is force-turned OFF after this many seconds
+  # even if nothing else stops it. Never 0.
+  auto_off_watchdog_seconds: 600
+  # How often (seconds) the watchdog thread checks deadlines.
+  watchdog_check_seconds: 1.0
+  # Duration used for manual activation from the dashboard when the
+  # caller does not specify one.
+  default_duration_seconds: 60
+  items:
+    - id: 1
+      name: fertilizer
+      label: NPK/Fertilizer
+      pin: 17
+      activation_duration_seconds: 120
+    - id: 2
+      name: watering
+      label: Soil Moisture/Watering
+      pin: 27
+      activation_duration_seconds: 300
+    - id: 3
+      name: pest_response
+      label: Pest Response
+      pin: 22
+      activation_duration_seconds: 120
+
+# ------------------------------------------------------------------
+# Pest detection - NOT CONFIGURED on the Pi yet.
+# Camera module and AI model will be added later. Keep `enabled: false`
+# until then; the rest of the system runs unaffected.
+# ------------------------------------------------------------------
+pest_detection:
+  enabled: false
+  relay_id: 3
+  detector: mock         # only 'mock' exists today
+  confidence_threshold: 0.70
+  capture_interval_seconds: 300
+  relay_activation_duration_seconds: 120
+  pest_classes:
+    - aphid
+    - caterpillar
+    - fungus
+  mock:
+    # none       -> never detects anything
+    # random     -> random detections using the settings below
+    # sequential -> cycles through `sequence` (deterministic, used by tests)
+    mode: random
+    sequence:
+      - [aphid, 0.91, true]
+      - [none, 0.0, false]
+    random:
+      detection_probability: 0.25
+      confidence_min: 0.50
+      confidence_max: 0.98
+
+# ------------------------------------------------------------------
+# Camera - not installed yet. Interface exists so PiCamera 3 can be
+# added later without touching the rest of the system.
+# ------------------------------------------------------------------
+camera:
+  enabled: false
+  capture_interval_seconds: 300
+  image_dir: data/images

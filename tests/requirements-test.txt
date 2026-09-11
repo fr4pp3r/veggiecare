@@ -1,0 +1,4 @@
+# VeggieCare tests
+
+pytest
+pytest-asyncio
