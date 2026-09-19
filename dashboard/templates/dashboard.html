@@ -80,10 +80,6 @@
             <span id="moist-status" class="status"></span>
           </div>
         </div>
-        <div class="usage-info">
-          <span>Monthly watering: <strong id="moist-used">—</strong> / <strong id="moist-max">—</strong></span>
-          <span id="moist-remaining" class="remaining">Remaining: —</span>
-        </div>
         <p class="meta" id="moist-meta">Last reading: — | Last watering: —</p>
       </section>
 
@@ -99,6 +95,10 @@
         <header class="card-header"><h2>Pest Detection</h2></header>
         <div id="pest-status" class="pest-status">Not configured / Camera not installed</div>
         <div id="pest-details" class="pest-details hidden"></div>
+        <div class="usage-info">
+          <span>Monthly pest responses: <strong id="pest-used">—</strong> / <strong id="pest-max">—</strong></span>
+          <span id="pest-remaining" class="remaining">Remaining: —</span>
+        </div>
         <div class="card-actions" id="pest-sim-controls" style="display:none;">
           <label>Pest class: <select id="sim-pest-class">
             <option value="aphid">Aphid</option>

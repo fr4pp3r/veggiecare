@@ -149,7 +149,6 @@ def _validate_soil_moisture(section: dict, errors: list[str], relay_ids: set[int
     if isinstance(relay_id, int) and not isinstance(relay_id, bool):
         if relay_id not in relay_ids:
             errors.append(f"{path}.relay_id: relay {relay_id} not defined in relays.items")
-    _int(section, "max_activations_per_month", errors, path, minimum=0)
     _number(section, "watering_cooldown_seconds", errors, path, minimum=0)
     simulated = _field(section, "simulated", dict, errors, path)
     if simulated is not None:
@@ -189,6 +188,7 @@ def _validate_pest(section: dict, errors: list[str], relay_ids: set[int]) -> Non
             errors.append(f"{path}.relay_id: relay {relay_id} not defined in relays.items")
     _number(section, "confidence_threshold", errors, path, minimum=0, maximum=1)
     _number(section, "capture_interval_seconds", errors, path, minimum=1)
+    _int(section, "max_activations_per_month", errors, path, minimum=0)
     classes = _field(section, "pest_classes", list, errors, path)
     if classes is not None:
         for idx, cls in enumerate(classes):

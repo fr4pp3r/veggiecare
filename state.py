@@ -80,7 +80,7 @@ class SystemState:
             "last_capture": None,
         }
 
-        # Relay 2 monthly usage
+        # Pest response relay (Relay 3) monthly activation usage
         self.usage: dict[str, Any] = {
             "month": None,
             "used": 0,

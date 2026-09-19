@@ -32,7 +32,6 @@ def _make_config(tmp_path=None):
             "log_interval_seconds": 0.1,
             "threshold": 30,
             "relay_id": 2,
-            "max_activations_per_month": 2,
             "watering_cooldown_seconds": 30,
             "relay_activation_duration_seconds": 1,
         },
@@ -53,6 +52,7 @@ def _make_config(tmp_path=None):
             "detector": "mock",
             "confidence_threshold": 0.70,
             "capture_interval_seconds": 1,
+            "max_activations_per_month": 2,
             "relay_activation_duration_seconds": 2,
             "pest_classes": ["aphid", "caterpillar", "fungus"],
             "mock": {"mode": "none", "sequence": [], "random": {"detection_probability": 0.25, "confidence_min": 0.50, "confidence_max": 0.98}},
@@ -160,38 +160,46 @@ def test_soil_moisture_auto_waters_when_below_threshold(automation_setup):
     assert entry["trigger"] == "automatic"
 
 
-def test_watering_monthly_limit_blocks_after_max(automation_setup):
-    """After max activations, further watering attempts should be blocked and logged."""
+def test_pest_monthly_limit_blocks_after_max(automation_setup, tmp_path):
+    """After max pest responses, further detections are blocked and logged."""
     ctrl, state, sensors, relays, db = automation_setup
-    cfg = _make_config()
-    cfg["database"]["path"] = str(ctrl._db.path)
 
-    # Use up the monthly limit (2) by directly inserting into DB
-    from datetime import datetime
+    # Use up the monthly limit (2) for relay 3 directly in the DB
     now = datetime.now()
     for _ in range(2):
         ctrl._db.insert_relay_activation(
-            relay_id=2, relay_name="watering", trigger_type="automatic",
-            duration_seconds=2, source="automation",
+            relay_id=3, relay_name="pest_response", trigger_type="automatic",
+            duration_seconds=2, source="pest_detection",
             timestamp=now.isoformat(timespec="seconds"),
         )
 
-    # Make moisture low again
-    sensors["moisture"].read.return_value = sensors["moisture"].read.return_value.__class__(
-        timestamp=datetime.now(),
-        values={"moisture": 20},
-    )
-    time.sleep(0.3)
+    # Enable pest detection with a detector that always detects
+    from pest_detection.mock_detector import MockDetector
+    pest_cfg = _make_config(tmp_path)["pest_detection"]
+    pest_cfg["enabled"] = True
+    pest_cfg["mock"]["mode"] = "sequential"
+    pest_cfg["mock"]["sequence"] = [("aphid", 0.91, True)]
+    pest_cfg["confidence_threshold"] = 0.5
+    detector = MockDetector(pest_cfg)
+    ctrl.attach_detector(detector)
 
-    # Should NOT activate again
-    assert relays.is_active(2) is False
+    from camera.camera import NotConfiguredCamera
+    class MockCam(NotConfiguredCamera):
+        def capture(self, save_path=None):
+            return "/tmp/test.jpg"
+    ctrl.attach_camera(MockCam())
 
-    # Should have logged a blocked activation
-    rows = ctrl._db._query("SELECT * FROM blocked_activations WHERE relay_id = 2")
+    state.update_pest(configured=True, model="mock", enabled=True)
+
+    ctrl._pest_cycle(time.monotonic(), pest_cfg)
+    time.sleep(0.1)
+
+    assert relays.is_active(3) is False
+
+    rows = ctrl._db._query("SELECT * FROM blocked_activations WHERE relay_id = 3")
     assert len(rows) >= 1
-    assert "Monthly watering limit reached" in rows[0]["reason"]
+    assert "Monthly pest response limit reached" in rows[0]["reason"]
 
-    # State should show limit reached
     snap = state.snapshot()
     assert snap["usage"]["limit_reached"] is True
     assert snap["usage"]["remaining"] == 0

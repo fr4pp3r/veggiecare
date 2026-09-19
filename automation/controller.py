@@ -87,7 +87,9 @@ class AutomationController:
         # Transition tracking — alerts fire only on state *change*, not every tick.
         self._npk_was_below = False
         self._moisture_was_below = False
-        self._blocked_alerted = False
+        # Month in which the pest-response monthly-limit alert last fired, so
+        # the blocked alert is emitted once per month, not every cycle.
+        self._pest_blocked_alert_month: str | None = None
 
     # ------------------------------------------------------------------
     # external wiring
@@ -260,8 +262,6 @@ class AutomationController:
         if below and not self._moisture_was_below:
             self._state.add_alert("WARNING", f"Soil moisture low: {value:.1f}% (threshold {threshold}%)", "moisture")
             self._log_event("WARNING", "moisture", f"Below threshold: {value:.1f}%")
-        if not below:
-            self._blocked_alerted = False  # re-arm alert for the next dry spell
         self._moisture_was_below = below
 
     def _evaluate_watering(self, now: float, cfg: dict) -> None:
@@ -277,30 +277,6 @@ class AutomationController:
 
         # Already watering?
         if self._relays.is_active(relay_id):
-            return
-
-        # Monthly activation limit
-        year_month = datetime.now()
-        year, month = year_month.year, year_month.month
-        max_per_month = int(cfg.get("max_activations_per_month", 2))
-        try:
-            used = self._db.count_relay_activations(relay_id, year, month)
-        except DatabaseError:
-            used = 0
-        remaining = max(0, max_per_month - used)
-        month_str = f"{year:04d}-{month:02d}"
-        self._state.update_usage(month=month_str, used=used, max_activations=max_per_month)
-
-        if remaining <= 0:
-            if not self._blocked_alerted:
-                self._blocked_alerted = True
-                reason = f"Monthly watering limit reached ({used}/{max_per_month})"
-                self._state.add_alert("WARNING", reason, "watering")
-                try:
-                    self._db.insert_blocked_activation(relay_id=relay_id, reason=reason)
-                except DatabaseError as exc:
-                    logger.error("DB write failed (blocked activation): %s", exc)
-                self._log_event("WARNING", "watering", reason)
             return
 
         # Activate watering
@@ -330,13 +306,6 @@ class AutomationController:
             except DatabaseError as exc:
                 logger.error("DB write failed (relay activation): %s", exc)
             self._log_event("INFO", "watering", f"Auto-watering started ({duration:.0f}s)")
-
-            # Update monthly count in state
-            try:
-                new_used = self._db.count_relay_activations(relay_id, year, month)
-            except DatabaseError:
-                new_used = used + 1
-            self._state.update_usage(month=month_str, used=new_used, max_activations=max_per_month)
 
             # Set cooldown so we don't immediately re-trigger
             cooldown = float(cfg.get("watering_cooldown_seconds", 3600))
@@ -417,25 +386,7 @@ class AutomationController:
                     duration = float(item.get("activation_duration_seconds", duration))
                     break
 
-            activated = self._relays.activate(
-                relay_id, duration=duration, trigger="automatic",
-            )
-            if activated:
-                self._state.set_relay(
-                    relay_id, state="on", activated_at=ts, duration=duration,
-                )
-                try:
-                    self._db.insert_relay_activation(
-                        relay_id=relay_id,
-                        relay_name="pest_response",
-                        trigger_type="automatic",
-                        duration_seconds=int(duration),
-                        source="pest_detection",
-                        timestamp=ts,
-                    )
-                except DatabaseError as exc:
-                    logger.error("DB write failed (relay activation): %s", exc)
-                self._log_event("INFO", "pest_detection", f"Relay 3 activated ({duration:.0f}s)")
+            self._activate_pest_response(relay_id, duration, ts, "pest_detection")
 
     # ------------------------------------------------------------------
     # manual / external activation
@@ -566,25 +517,60 @@ class AutomationController:
                     duration = float(item.get("activation_duration_seconds", duration))
                     break
 
-            activated = self._relays.activate(
-                relay_id, duration=duration, trigger="automatic",
-            )
-            if activated:
-                self._state.set_relay(
-                    relay_id, state="on", activated_at=ts, duration=duration,
-                )
+            self._activate_pest_response(relay_id, duration, ts, source)
+
+    def _activate_pest_response(self, relay_id: int, duration: float, ts: str, source: str) -> None:
+        """Activate the pest response relay, subject to the monthly limit."""
+        max_per_month = int(self._cfg.get("pest_detection", {}).get("max_activations_per_month", 2))
+
+        # Monthly activation limit — the ONLY limit in the system. NPK alerts
+        # and soil-moisture watering are never limited.
+        year_month = datetime.now()
+        year, month = year_month.year, year_month.month
+        try:
+            used = self._db.count_relay_activations(relay_id, year, month)
+        except DatabaseError:
+            used = 0
+        remaining = max(0, max_per_month - used)
+        month_str = f"{year:04d}-{month:02d}"
+        self._state.update_usage(month=month_str, used=used, max_activations=max_per_month)
+
+        if remaining <= 0:
+            if self._pest_blocked_alert_month != month_str:
+                self._pest_blocked_alert_month = month_str
+                reason = f"Monthly pest response limit reached ({used}/{max_per_month})"
+                self._state.add_alert("WARNING", reason, source)
                 try:
-                    self._db.insert_relay_activation(
-                        relay_id=relay_id,
-                        relay_name="pest_response",
-                        trigger_type="automatic",
-                        duration_seconds=int(duration),
-                        source=source,
-                        timestamp=ts,
-                    )
+                    self._db.insert_blocked_activation(relay_id=relay_id, reason=reason)
                 except DatabaseError as exc:
-                    logger.error("DB write failed (relay activation): %s", exc)
-                self._log_event("INFO", source, f"Relay 3 activated ({duration:.0f}s)")
+                    logger.error("DB write failed (blocked activation): %s", exc)
+                self._log_event("WARNING", source, reason)
+            return
+
+        activated = self._relays.activate(
+            relay_id, duration=duration, trigger="automatic",
+        )
+        if activated:
+            self._state.set_relay(
+                relay_id, state="on", activated_at=ts, duration=duration,
+            )
+            try:
+                self._db.insert_relay_activation(
+                    relay_id=relay_id,
+                    relay_name="pest_response",
+                    trigger_type="automatic",
+                    duration_seconds=int(duration),
+                    source=source,
+                    timestamp=ts,
+                )
+            except DatabaseError as exc:
+                logger.error("DB write failed (relay activation): %s", exc)
+            try:
+                new_used = self._db.count_relay_activations(relay_id, year, month)
+            except DatabaseError:
+                new_used = used + 1
+            self._state.update_usage(month=month_str, used=new_used, max_activations=max_per_month)
+            self._log_event("INFO", source, f"Relay {relay_id} activated ({duration:.0f}s)")
 
     # ------------------------------------------------------------------
     # helpers

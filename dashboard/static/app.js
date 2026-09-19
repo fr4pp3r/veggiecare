@@ -22,14 +22,14 @@
     moistThLine: n('moist-th-line'),
     moistThLabel: n('moist-th-label'),
     moistStatus: n('moist-status'),
-    moistUsed: n('moist-used'),
-    moistMax: n('moist-max'),
-    moistRemaining: n('moist-remaining'),
     moistMeta: n('moist-meta'),
     relayGrid: n('relay-grid'),
     btnEmergency: n('btn-emergency'),
     pestStatus: n('pest-status'),
     pestDetails: n('pest-details'),
+    pestUsed: n('pest-used'),
+    pestMax: n('pest-max'),
+    pestRemaining: n('pest-remaining'),
     pestSimControls: n('pest-sim-controls'),
     simPestClass: n('sim-pest-class'),
     simConfidence: n('sim-confidence'),
@@ -195,16 +195,8 @@
       els.moistThLine.style.left = '0%';
     }
 
-    // Usage
-    const usage = data.usage;
-    if (usage) {
-      els.moistUsed.textContent = usage.used;
-      els.moistMax.textContent = usage.max;
-      const rem = usage.remaining;
-      els.moistRemaining.textContent = `Remaining: ${rem}`;
-      els.moistRemaining.className = 'remaining' +
-        (rem <= 0 ? ' critical' : rem <= 1 ? ' low' : '');
-    }
+    // Usage (pest response monthly limit)
+    renderUsage(data.usage);
 
     els.moistMeta.textContent = `Last reading: ${fmtTime(moist.timestamp)} | Last watering: —`;
 
@@ -266,6 +258,22 @@
       <div class="pest-detail-row"><span class="label">Model</span><span class="value">${pest.model || '—'}</span></div>
       <div class="pest-detail-row"><span class="label">Last detection</span><span class="value">${fmtTime(pest.timestamp)}</span></div>
     `;
+  }
+
+  function renderUsage(usage) {
+    if (!usage || !usage.max) {
+      els.pestUsed.textContent = '—';
+      els.pestMax.textContent = '—';
+      els.pestRemaining.textContent = 'Remaining: —';
+      els.pestRemaining.className = 'remaining';
+      return;
+    }
+    els.pestUsed.textContent = usage.used;
+    els.pestMax.textContent = usage.max;
+    const rem = usage.remaining;
+    els.pestRemaining.textContent = `Remaining: ${rem}`;
+    els.pestRemaining.className = 'remaining' +
+      (rem <= 0 ? ' critical' : rem <= 1 ? ' low' : '');
   }
 
   function renderSystem(data) {

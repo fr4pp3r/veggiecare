@@ -150,8 +150,9 @@ class RelayController:
         self._thread = threading.Thread(target=self._watchdog_loop, daemon=True, name="relay-watchdog")
         self._thread.start()
         logger.info(
-            "Relay controller ready (%s): pins=%s",
+            "Relay controller ready (%s, active_high=%s): pins=%s",
             "simulated" if simulate else "GPIO",
+            self._active_high,
             [r["relay"].pin for r in self._relays.values()],
         )
 

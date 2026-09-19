@@ -59,7 +59,6 @@ npk:
 soil_moisture:
   enabled: true
   threshold: 30                 # %
-  max_activations_per_month: 2
   watering_cooldown_seconds: 3600
 
 relays:
@@ -74,6 +73,7 @@ pest_detection:
   enabled: false                # set true when camera + model are ready
   detector: mock
   confidence_threshold: 0.70
+  max_activations_per_month: 2  # ONLY pest response is monthly-limited
 ```
 
 ## Dashboard
@@ -132,7 +132,7 @@ Tests run entirely in simulated mode and cover:
 - Config loading & validation
 - Database schema & monthly activation counting
 - Relay watchdog auto-off
-- Automation rules (NPK alert, watering limit, pest → relay 3)
+- Automation rules (NPK alert only, watering + cooldown, pest → relay 3 with monthly limit)
 - Mock pest detector modes
 - Dashboard API endpoints
 
@@ -147,8 +147,8 @@ app.py
 ├── RelayController()     → gpiozero + watchdog thread (hard OFF at startup)
 ├── AutomationController  → background thread: read → rules → actuate → log
 │   ├── NPK: alert only (no auto relay)
-│   ├── Moisture: auto-water with monthly limit + cooldown
-│   └── Pest: detect → relay 3 (when enabled)
+│   ├── Moisture: auto-water with cooldown (no monthly limit)
+│   └── Pest: detect → relay 3 (monthly-limited)
 ├── Pest Detector (mock)  → swappable interface
 └── Flask dashboard       → reads SystemState, never blocks on hardware
 ```

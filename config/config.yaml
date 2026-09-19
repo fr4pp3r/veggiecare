@@ -64,11 +64,9 @@ soil_moisture:
   read_interval_seconds: 30
   log_interval_seconds: 300
   # Relay 2 (watering) is activated automatically when moisture drops
-  # below this percentage.
+  # below this percentage. There is NO monthly limit on watering.
   threshold: 30          # percent
   relay_id: 2
-  # Maximum automatic activations of Relay 2 per calendar month.
-  max_activations_per_month: 2
   # Wait this long after a completed watering before the system may
   # activate watering again (avoids re-triggering on a still-wet probe).
   watering_cooldown_seconds: 3600
@@ -120,6 +118,9 @@ pest_detection:
   confidence_threshold: 0.70
   capture_interval_seconds: 300
   relay_activation_duration_seconds: 120
+  # The monthly activation limit applies ONLY to the pest response relay.
+  # NPK alerts and soil-moisture watering are never limited.
+  max_activations_per_month: 2
   pest_classes:
     - aphid
     - caterpillar
