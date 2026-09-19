@@ -85,7 +85,7 @@ relays:
   active_high: true
   # Hard failsafe: any relay is force-turned OFF after this many seconds
   # even if nothing else stops it. Never 0.
-  auto_off_watchdog_seconds: 600
+  auto_off_watchdog_seconds: 180
   # How often (seconds) the watchdog thread checks deadlines.
   watchdog_check_seconds: 1.0
   # Duration used for manual activation from the dashboard when the
@@ -101,7 +101,7 @@ relays:
       name: watering
       label: Soil Moisture/Watering
       pin: 27
-      activation_duration_seconds: 300
+      activation_duration_seconds: 120
     - id: 3
       name: pest_response
       label: Pest Response
