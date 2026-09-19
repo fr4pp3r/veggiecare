@@ -88,6 +88,9 @@ pest_detection:
 ```bash
 # 1. Copy project to Pi
 sudo cp -r veggiecare /home/pi/
+# data/ and logs/ are gitignored — create them explicitly (systemd
+# ReadWritePaths fails with status=226/NAMESPACE if they don't exist)
+sudo mkdir -p /home/pi/veggiecare/data /home/pi/veggiecare/logs
 
 # 2. Create the dedicated service account.
 #    Do NOT run as 'pi' — modern Raspberry Pi OS images (Imager/first-boot
@@ -173,6 +176,7 @@ When PiCamera 3 + model arrive:
 | Symptom | Likely Cause | Fix |
 |---------|--------------|-----|
 | `systemd`: `Failed at step USER ... status=217/USER` | `User=` in the unit doesn't exist — `pi` is gone on newer RPi OS images | Create the `veggiecare` account (Deployment §2) or set `User=` to a real account, then `daemon-reload` + `restart` |
+| `systemd`: `Failed to set up mount namespacing ... status=226/NAMESPACE` | `data/` or `logs/` missing (gitignored, so fresh clones lack them) | `sudo mkdir -p /home/pi/veggiecare/data /home/pi/veggiecare/logs` then `systemctl restart veggiecare` |
 | `gpiozero` import error | Not on Pi or missing libs | `pip install gpiozero lgpio` or run `--simulate` |
 | `spidev` build fails | Missing kernel headers | `sudo apt install python3-spidev` or `--simulate` |
 | NPK read fails | RS485 wiring / slave ID / baud | Check A/B lines, power, `ls /dev/ttyUSB*`, try `minimalmodbus` debug |

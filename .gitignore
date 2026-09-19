@@ -15,9 +15,14 @@ dist/
 htmlcov/
 tests/__pycache__/
 
-# Local runtime data — never commit sensor readings or logs
-data/
-logs/
+# Local runtime data — never commit sensor readings or logs.
+# Keep the dirs themselves tracked so fresh clones/deploys still contain
+# data/ and logs/ — systemd ReadWritePaths fails with 226/NAMESPACE if the
+# mount points don't exist at service start.
+data/*
+logs/*
+!data/.gitkeep
+!logs/.gitkeep
 *.db
 *.db-journal
 *.db-wal
