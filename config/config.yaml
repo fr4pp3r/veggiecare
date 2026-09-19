@@ -82,7 +82,7 @@ soil_moisture:
 relays:
   # true if the relay module energizes on a HIGH GPIO signal,
   # false for active-low modules.
-  active_high: true
+  active_high: false
   # Hard failsafe: any relay is force-turned OFF after this many seconds
   # even if nothing else stops it. Never 0.
   auto_off_watchdog_seconds: 180
