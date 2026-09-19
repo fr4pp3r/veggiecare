@@ -316,6 +316,62 @@ def expand_paths(cfg: dict) -> dict:
     return cfg
 
 
+def config_file_path(path: str | Path | None = None) -> Path:
+    """Resolve the effective configuration file path.
+
+    Resolution order: ``path`` argument, then the VEGGIECARE_CONFIG
+    environment variable, then the default config/config.yaml.
+    """
+    if path is not None:
+        return Path(path)
+    return Path(os.environ.get("VEGGIECARE_CONFIG", DEFAULT_CONFIG_PATH))
+
+
+def save_user_config(config_path: str | Path, updates: dict[str, Any]) -> None:
+    """Apply dotted-key ``updates`` to the YAML file at ``config_path``.
+
+    The file is round-tripped with ruamel.yaml so comments and formatting
+    of untouched keys are preserved, and written atomically (temp file +
+    ``os.replace``). Validation is the caller's responsibility — this
+    function only persists values. Field values are stored as-is; callers
+    convert UI units to stored units before passing them here.
+    """
+    try:
+        from ruamel.yaml import YAML
+    except ImportError as exc:
+        raise ConfigError(
+            "Saving settings requires ruamel.yaml."
+            " Run: .venv/bin/pip install -r requirements.txt",
+        ) from exc
+
+    path = Path(config_path)
+    yaml = YAML()
+    yaml.preserve_quotes = True
+    yaml.width = 4096
+
+    if path.exists():
+        with open(path, "r", encoding="utf-8") as fh:
+            data = yaml.load(fh)
+        if data is None:
+            data = {}
+    else:
+        data = default_config()
+
+    for dotted, value in updates.items():
+        target = data
+        parts = dotted.split(".")
+        for part in parts[:-1]:
+            if not isinstance(target.get(part), dict):
+                target[part] = {}
+            target = target[part]
+        target[parts[-1]] = value
+
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp_path, "w", encoding="utf-8") as fh:
+        yaml.dump(data, fh)
+    os.replace(tmp_path, path)
+
+
 def load_config(path: str | Path | None = None) -> dict[str, Any]:
     """Load, merge, validate and expand a configuration file.
 
@@ -323,11 +379,7 @@ def load_config(path: str | Path | None = None) -> dict[str, Any]:
     environment variable, then the default config/config.yaml.
     """
     cfg = default_config()
-    configured_path = (
-        Path(path)
-        if path is not None
-        else Path(os.environ.get("VEGGIECARE_CONFIG", DEFAULT_CONFIG_PATH))
-    )
+    configured_path = config_file_path(path)
     if configured_path.exists():
         with open(configured_path, "r", encoding="utf-8") as fh:
             user_cfg = yaml.safe_load(fh) or {}

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+import yaml
 from flask import Flask
 
 from dashboard import create_app
@@ -65,7 +68,7 @@ def test_app(tmp_path):
 
     controller = MockController()
 
-    app = create_app(state=state, config=test_cfg, controller=controller)
+    app = create_app(state=state, config=test_cfg, controller=controller, config_path=tmp_path / "test_config.yaml")
     app.config["TESTING"] = True
     return app
 
@@ -166,3 +169,105 @@ def test_api_detections_populated(tmp_path):
         assert rows[0]["model"] == "mock"
     finally:
         db.close()
+
+
+# ======================================================================
+# Settings / config page
+# ======================================================================
+
+def test_api_config_schema(test_app):
+    client = test_app.test_client()
+    resp = client.get("/api/config")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert "groups" in data
+    assert isinstance(data["restart_supported"], bool)
+    assert isinstance(data["path"], str)
+    assert data["dirty"] is False
+    assert data["pending"] is None
+
+    groups = {g["id"]: g for g in data["groups"]}
+    assert set(groups) == {"watering", "fertilizer", "pest", "safety", "system"}
+    fields = {f["key"]: f for g in data["groups"] for f in g["fields"]}
+    assert fields["soil_moisture.enabled"]["type"] == "toggle"
+    assert fields["soil_moisture.threshold"]["value"] == 30
+    assert fields["soil_moisture.threshold"]["min"] == 0
+    assert fields["soil_moisture.threshold"]["max"] == 100
+    assert fields["system.timezone"]["type"] == "select"
+    assert "Asia/Manila" in fields["system.timezone"]["options"]
+
+
+def test_api_settings_save(test_app, tmp_path):
+    client = test_app.test_client()
+    path = tmp_path / "test_config.yaml"
+
+    resp = client.post("/api/settings", json={"settings": {"soil_moisture.threshold": 45}})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["ok"] is True
+    assert data["restart_required"] is True
+    assert "Water when soil moisture drops below" in data["changed"]
+    assert data["pending"]["fields"] == ["Water when soil moisture drops below"]
+
+    assert path.exists()
+    with open(path, "r", encoding="utf-8") as fh:
+        saved = yaml.safe_load(fh)
+    assert saved["soil_moisture"]["threshold"] == 45
+
+    resp = client.get("/api/config")
+    cfg = resp.get_json()
+    assert cfg["dirty"] is True
+    assert cfg["pending"] is not None
+
+
+def test_api_settings_out_of_range(test_app):
+    client = test_app.test_client()
+    resp = client.post("/api/settings", json={"settings": {"soil_moisture.threshold": 250}})
+    assert resp.status_code == 400
+    data = resp.get_json()
+    assert data["ok"] is False
+    assert data["errors"]
+
+
+def test_api_settings_unknown_key(test_app):
+    client = test_app.test_client()
+    resp = client.post("/api/settings", json={"settings": {"bogus.key": 1}})
+    assert resp.status_code == 400
+    assert resp.get_json()["ok"] is False
+
+
+def test_api_settings_bad_type(test_app):
+    client = test_app.test_client()
+    resp = client.post("/api/settings", json={"settings": {"soil_moisture.enabled": "yes"}})
+    assert resp.status_code == 400
+    assert resp.get_json()["ok"] is False
+
+
+def test_api_settings_preserves_comments(tmp_path):
+    from config.config import default_config
+
+    cfg = default_config()
+    cfg["system"]["simulate_hardware"] = True
+    state = SystemState(cfg)
+    yaml_file = tmp_path / "commented.yaml"
+    yaml_file.write_text(
+        "# keep me\nsoil_moisture:\n  threshold: 30\n",
+        encoding="utf-8",
+    )
+    app = create_app(state=state, config=cfg, controller=None, db=None, config_path=yaml_file)
+    app.config["TESTING"] = True
+    client = app.test_client()
+
+    resp = client.post("/api/settings", json={"settings": {"soil_moisture.threshold": 45}})
+    assert resp.status_code == 200
+    text = yaml_file.read_text(encoding="utf-8")
+    assert "# keep me" in text
+    assert "threshold: 45" in text
+
+
+def test_api_system_restart_requires_systemd(test_app, monkeypatch):
+    monkeypatch.delenv("INVOCATION_ID", raising=False)
+    client = test_app.test_client()
+    resp = client.post("/api/system/restart")
+    assert resp.status_code == 409
+    assert "systemd" in resp.get_json()["error"]

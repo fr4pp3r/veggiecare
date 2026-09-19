@@ -6,11 +6,34 @@ live state that the frontend JavaScript polls for updates.
 
 from __future__ import annotations
 
+import logging
+import os
+import signal
+import threading
+import time
+from datetime import datetime
+from pathlib import Path
+
 from flask import Blueprint, current_app, jsonify, render_template, request
 
+from config import (
+    ConfigError,
+    config_file_path,
+    deep_merge,
+    load_config,
+    save_user_config,
+    validate,
+)
+from database.database import DatabaseError
 from state import SystemState
 
 bp = Blueprint("dashboard", __name__)
+
+log = logging.getLogger("veggiecare.dashboard")
+
+# Serializes config file writes and guards the restart flag.
+_files_lock = threading.Lock()
+_restart_scheduled = False
 
 
 def _state() -> SystemState:
@@ -199,3 +222,123 @@ def api_detections():
         return jsonify([]), 200
     limit = request.args.get("limit", 50, type=int)
     return jsonify(db.recent_pest_detections(limit=limit))
+
+
+# ======================================================================
+# JSON API — settings (dashboard config page)
+# ======================================================================
+
+def _config_path() -> Path:
+    path = getattr(current_app, "veggiecare_config_path", None)
+    return Path(path) if path else config_file_path()
+
+
+@bp.route("/api/config")
+def api_config():
+    from dashboard.settings_schema import get_config_payload
+
+    pending = getattr(current_app, "veggiecare_config_pending", None)
+    payload = get_config_payload(_config())
+    payload["path"] = str(_config_path())
+    payload["restart_supported"] = bool(os.environ.get("INVOCATION_ID"))
+    payload["dirty"] = pending is not None
+    payload["pending"] = pending
+    return jsonify(payload)
+
+
+@bp.route("/api/settings", methods=["POST"])
+def api_settings_save():
+    from dashboard.settings_schema import normalize_settings, read_path, set_path
+
+    body = request.get_json(silent=True) or {}
+    settings = body.get("settings")
+
+    with _files_lock:
+        try:
+            normalized, labels, errors = normalize_settings(settings)
+            if errors:
+                return jsonify({
+                    "ok": False,
+                    "error": "Check the highlighted settings.",
+                    "errors": errors,
+                }), 400
+
+            path = _config_path()
+            base = load_config(path)
+            working = deep_merge({}, base)
+            for key, value in normalized.items():
+                set_path(working, key, value)
+            try:
+                validate(working)
+            except ConfigError as exc:
+                return jsonify({
+                    "ok": False,
+                    "error": "Settings failed validation.",
+                    "errors": [str(exc)],
+                }), 400
+
+            save_user_config(path, normalized)
+
+            pending = {
+                "saved_at": datetime.now().isoformat(timespec="seconds"),
+                "fields": labels,
+            }
+            current_app.veggiecare_config_pending = pending  # type: ignore[attr-defined]
+
+            db = getattr(current_app, "veggiecare_db", None)
+            if db is not None:
+                for key, value in normalized.items():
+                    old = read_path(base, key)
+                    try:
+                        db.insert_config_change(
+                            key, str(old), str(value), source="dashboard",
+                        )
+                    except DatabaseError:
+                        log.warning("Config change audit failed for %s", key)
+
+            return jsonify({
+                "ok": True,
+                "message": "Settings saved. Restart the server to apply them.",
+                "restart_required": True,
+                "changed": labels,
+                "pending": pending,
+            })
+        except ConfigError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 500
+        except OSError as exc:
+            return jsonify({
+                "ok": False,
+                "error": f"Could not write the config file: {exc}",
+            }), 500
+
+
+@bp.route("/api/system/restart", methods=["POST"])
+def api_system_restart():
+    global _restart_scheduled
+
+    if not os.environ.get("INVOCATION_ID"):
+        return jsonify({
+            "ok": False,
+            "error": "Restart is only available when VeggieCare runs as a systemd service.",
+        }), 409
+
+    with _files_lock:
+        if _restart_scheduled:
+            return jsonify({
+                "ok": True,
+                "message": "VeggieCare is already restarting — the dashboard will reconnect in about 30 seconds.",
+            })
+        _restart_scheduled = True
+
+    def _do_restart() -> None:
+        time.sleep(1.5)
+        try:
+            os.kill(os.getpid(), signal.SIGTERM)
+        except Exception:
+            os._exit(1)
+
+    threading.Thread(target=_do_restart, daemon=True, name="veggiecare-restart").start()
+    return jsonify({
+        "ok": True,
+        "message": "VeggieCare is restarting — the dashboard will reconnect in about 30 seconds.",
+    })

@@ -82,6 +82,7 @@ pest_detection:
 - **Live updates**: polls `/api/state` every 5 s
 - **Sections**: NPK, Soil Moisture, Relays, Pest Detection, System Status, Alerts
 - **Manual controls**: Relay 1 (fertilizer) button, emergency stop, pause/resume automation, pest simulation
+- **Settings tab**: edit grouped settings in plain language (sliders/toggles/selects), save to `config/config.yaml`, then restart the server to apply. Restart switches all pumps off for ~30 s and is only available when running as a systemd service.
 
 ## Deployment (systemd)
 
@@ -103,6 +104,8 @@ sudo chown -R veggiecare:veggiecare /home/veggiecare/veggiecare
 cd /home/veggiecare/veggiecare
 /usr/bin/python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
+# Existing setups: re-run the pip line above to pick up ruamel.yaml,
+# which the dashboard Settings page needs to save config changes.
 
 # 4. Install systemd unit
 sudo cp deploy/veggiecare.service /etc/systemd/system/

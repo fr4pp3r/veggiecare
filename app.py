@@ -23,7 +23,7 @@ import signal
 import sys
 from pathlib import Path
 
-from config import ConfigError, load_config
+from config import ConfigError, config_file_path, load_config
 from database.database import Database
 from state import SystemState
 
@@ -178,7 +178,11 @@ def main() -> int:
     # 9. Dashboard
     from dashboard import create_app
     app = create_app(
-        state=state, config=cfg, controller=controller, db=db,
+        state=state,
+        config=cfg,
+        controller=controller,
+        db=db,
+        config_path=config_file_path(args.config),
     )
 
     # Serve with waitress (production-grade, pure-Python WSGI). Dashboard

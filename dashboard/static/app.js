@@ -44,6 +44,12 @@
     sysAuto: n('sys-auto'),
     btnPause: n('btn-pause'),
     btnResume: n('btn-resume'),
+    settingsBanner: n('settings-banner'),
+    settingsGroups: n('settings-groups'),
+    btnSaveSettings: n('btn-save-settings'),
+    settingsSaveNote: n('settings-save-note'),
+    btnRestartServer: n('btn-restart-server'),
+    restartStatus: n('restart-status'),
     navTabs: document.querySelectorAll('.nav-tab'),
     subTabs: document.querySelectorAll('.sub-tab'),
     logsLimit: n('logs-limit'),
@@ -500,7 +506,9 @@
     els.navTabs.forEach(t => t.classList.toggle('active', t.dataset.view === view));
     document.getElementById('view-overview').classList.toggle('hidden', view !== 'overview');
     document.getElementById('view-logs').classList.toggle('hidden', view !== 'logs');
+    document.getElementById('view-settings').classList.toggle('hidden', view !== 'settings');
     if (view === 'logs') loadLogs();
+    if (view === 'settings') loadSettings();
   }
 
   function switchLogTab(log) {
@@ -508,6 +516,238 @@
     for (const [key, panel] of Object.entries(els.logPanels)) {
       panel.classList.toggle('hidden', key !== log);
     }
+  }
+
+  // ------------------------------------------------------------------
+  // Settings view
+  // ------------------------------------------------------------------
+
+  function showSettingsBanner(kind, message) {
+    els.settingsBanner.textContent = message;
+    els.settingsBanner.className = 'settings-banner ' + kind;
+  }
+
+  function hideSettingsBanner() {
+    els.settingsBanner.className = 'settings-banner hidden';
+    els.settingsBanner.textContent = '';
+  }
+
+  function uiValueFor(field) {
+    const stored = field.value == null ? field.min : field.value;
+    return field.factor ? Math.round((stored / field.factor) * 100) / 100 : stored;
+  }
+
+  function fmtSliderValue(field, ui) {
+    const n = field.integer ? Math.round(ui) : Math.round(ui * 100) / 100;
+    return `${n}${field.unit ? ' ' + field.unit : ''}`;
+  }
+
+  async function loadSettings() {
+    try {
+      const data = await fetchJson(`${API}/config`);
+      renderSettings(data);
+    } catch (e) {
+      showSettingsBanner('error', `Failed to load settings: ${e.message}`);
+    }
+  }
+
+  function renderSettings(data) {
+    els.settingsGroups.innerHTML = '';
+    hideSettingsBanner();
+
+    if (data.pending) {
+      const fields = data.pending.fields.join(', ');
+      showSettingsBanner('warning', `Settings saved at ${fmtTime(data.pending.saved_at)} — restart the server to apply them. (${fields})`);
+    }
+
+    data.groups.forEach(group => {
+      const section = document.createElement('section');
+      section.className = 'card settings-group';
+      const header = document.createElement('header');
+      header.className = 'card-header';
+      const h2 = document.createElement('h2');
+      h2.textContent = group.title;
+      header.appendChild(h2);
+      section.appendChild(header);
+      if (group.description) {
+        const desc = document.createElement('p');
+        desc.className = 'group-desc';
+        desc.textContent = group.description;
+        section.appendChild(desc);
+      }
+      const list = document.createElement('div');
+      list.className = 'setting-list';
+      group.fields.forEach(field => list.appendChild(buildFieldRow(field)));
+      section.appendChild(list);
+      els.settingsGroups.appendChild(section);
+    });
+
+    els.btnSaveSettings.classList.add('hidden');
+    els.settingsSaveNote.textContent = 'Changes apply after a restart.';
+    els.btnRestartServer.disabled = !data.restart_supported;
+    els.restartStatus.textContent = data.restart_supported
+      ? 'Restart switches all pumps off for about 30 seconds.'
+      : 'Restart is only available when running as a systemd service.';
+  }
+
+  function buildFieldRow(field) {
+    const row = document.createElement('div');
+    row.className = 'setting-row';
+    row.dataset.key = field.key;
+
+    const info = document.createElement('div');
+    info.className = 'setting-info';
+    const label = document.createElement('span');
+    label.className = 'setting-label';
+    label.textContent = field.label;
+    const desc = document.createElement('span');
+    desc.className = 'setting-desc';
+    desc.textContent = field.description || '';
+    info.appendChild(label);
+    info.appendChild(desc);
+
+    const control = document.createElement('div');
+    control.className = 'setting-control';
+    let input;
+    if (field.type === 'toggle') {
+      input = document.createElement('input');
+      input.type = 'checkbox';
+      input.className = 'settings-toggle';
+      input.checked = !!field.value;
+    } else if (field.type === 'slider') {
+      input = document.createElement('input');
+      input.type = 'range';
+      input.className = 'settings-slider';
+      input.min = field.min;
+      input.max = field.max;
+      input.step = field.step != null ? field.step : 1;
+      const ui = uiValueFor(field);
+      input.value = Math.max(field.min, Math.min(field.max, ui));
+      const val = document.createElement('span');
+      val.className = 'slider-val';
+      val.textContent = fmtSliderValue(field, ui);
+      control.appendChild(val);
+      input.addEventListener('input', () => {
+        val.textContent = fmtSliderValue(field, parseFloat(input.value));
+        markSettingsDirty();
+      });
+    } else if (field.type === 'select') {
+      input = document.createElement('select');
+      input.className = 'settings-select';
+      (field.options || []).forEach(opt => {
+        const o = document.createElement('option');
+        o.value = opt;
+        o.textContent = opt;
+        input.appendChild(o);
+      });
+      input.value = field.value != null ? field.value : (field.options || [])[0];
+    } else {
+      input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'settings-text';
+      input.value = field.value != null ? field.value : '';
+    }
+    input.dataset.fieldKey = field.key;
+    input.dataset.fieldType = field.type;
+    input.addEventListener('change', markSettingsDirty);
+    control.appendChild(input);
+    row.appendChild(info);
+    row.appendChild(control);
+    return row;
+  }
+
+  function markSettingsDirty() {
+    els.btnSaveSettings.classList.remove('hidden');
+    els.settingsSaveNote.textContent = 'Unsaved changes — save to apply them after a restart.';
+  }
+
+  function collectSettings() {
+    const settings = {};
+    els.settingsGroups.querySelectorAll('[data-field-key]').forEach(el => {
+      const key = el.dataset.fieldKey;
+      const type = el.dataset.fieldType;
+      if (type === 'toggle') settings[key] = el.checked;
+      else if (type === 'slider') settings[key] = parseFloat(el.value);
+      else settings[key] = el.value;
+    });
+    return settings;
+  }
+
+  function markFieldErrors(errors) {
+    els.settingsGroups.querySelectorAll('.setting-row').forEach(r => r.classList.remove('field-error'));
+    (errors || []).forEach(err => {
+      const labelPart = err.split(':')[0].trim();
+      els.settingsGroups.querySelectorAll('.setting-row').forEach(row => {
+        const lbl = row.querySelector('.setting-label');
+        if (lbl && lbl.textContent.trim() === labelPart) row.classList.add('field-error');
+      });
+    });
+  }
+
+  async function saveSettings() {
+    els.btnSaveSettings.disabled = true;
+    try {
+      const res = await fetch(`${API}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: collectSettings() }),
+      });
+      let body = {};
+      try { body = await res.json(); } catch (_) { /* non-JSON error */ }
+      if (!res.ok) {
+        const errs = (body.errors || []).map(e => `• ${e}`).join(' ');
+        showSettingsBanner('error', `${body.error || 'Could not save settings.'}${errs ? ' ' + errs : ''}`);
+        markFieldErrors(body.errors);
+        return;
+      }
+      showSettingsBanner('success', body.message || 'Settings saved. Restart the server to apply them.');
+      els.btnSaveSettings.classList.add('hidden');
+      els.settingsSaveNote.textContent = 'Saved — restart the server to apply.';
+    } catch (e) {
+      showSettingsBanner('error', `Could not save settings: ${e.message}`);
+    } finally {
+      els.btnSaveSettings.disabled = false;
+    }
+  }
+
+  async function restartServer() {
+    if (!confirm('Restart the server now? This takes about 30 seconds. All pumps are switched off during the restart.')) return;
+    els.btnRestartServer.disabled = true;
+    els.restartStatus.textContent = 'Restarting…';
+    try {
+      const res = await fetch(`${API}/system/restart`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      let body = {};
+      try { body = await res.json(); } catch (_) { /* non-JSON error */ }
+      if (!res.ok) {
+        els.restartStatus.textContent = body.error || `Restart failed (${res.status}).`;
+        els.btnRestartServer.disabled = false;
+        return;
+      }
+      els.restartStatus.textContent = body.message || 'Restarting — the dashboard will reconnect in about 30 seconds.';
+      await waitForServerBack();
+    } catch (e) {
+      els.restartStatus.textContent = `Restart failed: ${e.message}`;
+      els.btnRestartServer.disabled = false;
+    }
+  }
+
+  async function waitForServerBack() {
+    const deadline = Date.now() + 90 * 1000;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 3000));
+      try {
+        const res = await fetch(`${API}/state`, { headers: { 'Accept': 'application/json' } });
+        if (res.ok) {
+          location.reload();
+          return;
+        }
+      } catch (_) { /* server still down — keep polling */ }
+    }
+    els.restartStatus.textContent = 'Server did not come back after restart. Check the service status.';
+    els.btnRestartServer.disabled = false;
   }
 
   // Actions
@@ -557,6 +797,8 @@
   els.btnPause.addEventListener('click', pauseAutomation);
   els.btnResume.addEventListener('click', resumeAutomation);
   els.btnSimPest.addEventListener('click', simulatePest);
+  els.btnSaveSettings.addEventListener('click', saveSettings);
+  els.btnRestartServer.addEventListener('click', restartServer);
   els.simConfidence.addEventListener('input', () => {
     els.simConfVal.textContent = parseFloat(els.simConfidence.value).toFixed(2);
   });
