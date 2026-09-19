@@ -6,16 +6,16 @@ Wants=network-online.target time-sync.target
 
 [Service]
 Type=simple
-# Runs as a dedicated system account — see README "Deployment".
-# NOTE: 'pi' does not exist on modern Raspberry Pi OS images; using it makes
-# systemd fail at the USER step with status=217/USER ("Failed to determine
-# user credentials: No such process").
+# Runs as the 'veggiecare' account — your Pi login user (set via Raspberry
+# Pi Imager / first-boot wizard). Do NOT use 'pi': that user does not exist
+# on modern images and systemd fails at the USER step with status=217/USER
+# ("Failed to determine user credentials: No such process").
 User=veggiecare
 Group=veggiecare
-WorkingDirectory=/home/pi/veggiecare
-Environment=VEGGIECARE_CONFIG=/home/pi/veggiecare/config/config.yaml
-Environment=PYTHONPATH=/home/pi/veggiecare
-ExecStart=/home/pi/veggiecare/.venv/bin/python /home/pi/veggiecare/app.py --host 0.0.0.0 --port 5000
+WorkingDirectory=/home/veggiecare/veggiecare
+Environment=VEGGIECARE_CONFIG=/home/veggiecare/veggiecare/config/config.yaml
+Environment=PYTHONPATH=/home/veggiecare/veggiecare
+ExecStart=/home/veggiecare/veggiecare/.venv/bin/python /home/veggiecare/veggiecare/app.py --host 0.0.0.0 --port 5000
 ExecStop=/bin/kill -TERM $MAINPID
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
@@ -29,7 +29,7 @@ PrivateTmp=yes
 ProtectSystem=strict
 # NOTE: ProtectHome must stay OFF — it makes /home inaccessible and would
 # shadow the ReadWritePaths below, breaking logs/ + data/ writes.
-ReadWritePaths=/home/pi/veggiecare/logs /home/pi/veggiecare/data
+ReadWritePaths=/home/veggiecare/veggiecare/logs /home/veggiecare/veggiecare/data
 # GPIO/serial/SPI access
 SupplementaryGroups=gpio dialout spi i2c
 

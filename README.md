@@ -86,25 +86,23 @@ pest_detection:
 ## Deployment (systemd)
 
 ```bash
-# 1. Copy project to Pi
-sudo cp -r veggiecare /home/pi/
+# 1. Copy project into your home directory
+sudo cp -r veggiecare /home/veggiecare/
 # data/ and logs/ are gitignored — create them explicitly (systemd
 # ReadWritePaths fails with status=226/NAMESPACE if they don't exist)
-sudo mkdir -p /home/pi/veggiecare/data /home/pi/veggiecare/logs
+mkdir -p /home/veggiecare/veggiecare/data /home/veggiecare/veggiecare/logs
 
-# 2. Create the dedicated service account.
-#    Do NOT run as 'pi' — modern Raspberry Pi OS images (Imager/first-boot
-#    wizard) use a custom username, so systemd fails with status=217/USER.
-sudo useradd -r -M -d /home/pi/veggiecare -s /usr/sbin/nologin veggiecare
-sudo chown -R veggiecare:veggiecare /home/pi/veggiecare
-sudo chmod o+x /home/pi          # allow the service user to traverse the path
+# 2. Ownership — the service runs as 'veggiecare' (your Pi login user, set
+#    via Raspberry Pi Imager / first-boot wizard). Never use 'pi' — that
+#    user does not exist on modern images; systemd fails with 217/USER.
+sudo chown -R veggiecare:veggiecare /home/veggiecare/veggiecare
 
-# 3. Create venv & install (owned by the service account so the unit can
-#    execute it; .venv is gitignored, so it never ships with the repo)
-#    If venv creation fails with "ensurepip is not available":
+# 3. Create venv & install (.venv is gitignored, so it never ships with
+#    the repo) — if this fails with "ensurepip is not available":
 #      sudo apt install -y python3-venv
-sudo -u veggiecare /usr/bin/python3 -m venv /home/pi/veggiecare/.venv
-sudo -u veggiecare /home/pi/veggiecare/.venv/bin/pip install -r /home/pi/veggiecare/requirements.txt
+cd /home/veggiecare/veggiecare
+/usr/bin/python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 
 # 4. Install systemd unit
 sudo cp deploy/veggiecare.service /etc/systemd/system/
@@ -117,7 +115,7 @@ sudo systemctl status veggiecare
 sudo journalctl -u veggiecare -f
 ```
 
-The service runs as the dedicated `veggiecare` account, restarts on failure, and logs to the systemd journal. GPIO/SPI/serial access comes from `SupplementaryGroups=gpio dialout spi i2c`, not from the account itself.
+The service runs as the `veggiecare` login account, restarts on failure, and logs to the systemd journal. GPIO/SPI/serial access comes from `SupplementaryGroups=gpio dialout spi i2c`, plus the built-in membership your login user already has in those groups.
 
 ## Running Tests
 
