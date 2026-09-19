@@ -56,7 +56,12 @@
     },
   };
 
-  function n(sel) { return document.querySelector(sel); }
+  function n(sel) {
+  // '#'/'.'/'[' prefix = CSS selector; anything else = element ID
+  return sel[0] === '#' || sel[0] === '.' || sel[0] === '['
+    ? document.querySelector(sel)
+    : document.getElementById(sel);
+}
 
   // State
   let alertId = 0;
@@ -130,8 +135,9 @@
     // NPK
     const npk = data.sensors.npk;
     const th = data.thresholds?.npk || {};
+    const NPK_KEYS = { nitrogen: 'n', phosphorus: 'p', potassium: 'k' };
     ['nitrogen', 'phosphorus', 'potassium'].forEach(nut => {
-      const key = nut[0]; // n, p, k
+      const key = NPK_KEYS[nut]; // n, p, k
       const val = npk[nut];
       const below = npk.below?.[nut];
       const threshold = th[nut];
@@ -240,15 +246,6 @@
       `;
       els.relayGrid.appendChild(card);
     });
-
-    // Event delegation
-    els.relayGrid.addEventListener('click', async (e) => {
-      const btn = e.target.closest('[data-on],[data-off]');
-      if (!btn) return;
-      const id = parseInt(btn.dataset.on || btn.dataset.off, 10);
-      if (btn.dataset.on) await activateRelay(id);
-      else await deactivateRelay(id);
-    });
   }
 
   function renderPest(pest) {
@@ -274,55 +271,55 @@
   function renderSystem(data) {
     els.sysUptime.textContent = uptimeStr(data.system.uptime_seconds);
     // DB
-    els.sysDb.querySelector('dd').innerHTML = '';
-    els.sysDb.querySelector('dd').appendChild(statusDot(data.database.ok));
-    els.sysDb.querySelector('dd').append(data.database.ok ? ' Connected' : ` Error: ${data.database.error || 'unknown'}`);
+    els.sysDb.innerHTML = '';
+    els.sysDb.appendChild(statusDot(data.database.ok));
+    els.sysDb.append(data.database.ok ? ' Connected' : ` Error: ${data.database.error || 'unknown'}`);
 
     // NPK sensor
     const npk = data.sensors.npk;
     const npkOk = !npk.error && npk.last_success;
-    els.sysNpk.querySelector('dd').innerHTML = '';
-    els.sysNpk.querySelector('dd').appendChild(statusDot(npkOk));
-    els.sysNpk.querySelector('dd').append(npkOk ? ' OK' : ` Error: ${npk.error || 'no reading'}`);
+    els.sysNpk.innerHTML = '';
+    els.sysNpk.appendChild(statusDot(npkOk));
+    els.sysNpk.append(npkOk ? ' OK' : ` Error: ${npk.error || 'no reading'}`);
 
     // Moisture sensor
     const moist = data.sensors.moisture;
     const moistOk = !moist.error && moist.last_success;
-    els.sysMoist.querySelector('dd').innerHTML = '';
-    els.sysMoist.querySelector('dd').appendChild(statusDot(moistOk));
-    els.sysMoist.querySelector('dd').append(moistOk ? ' OK' : ` Error: ${moist.error || 'no reading'}`);
+    els.sysMoist.innerHTML = '';
+    els.sysMoist.appendChild(statusDot(moistOk));
+    els.sysMoist.append(moistOk ? ' OK' : ` Error: ${moist.error || 'no reading'}`);
 
     // Camera
-    els.sysCam.querySelector('dd').innerHTML = '';
+    els.sysCam.innerHTML = '';
     const cam = data.camera;
     if (cam.configured) {
-      els.sysCam.querySelector('dd').appendChild(statusDot(!cam.error));
-      els.sysCam.querySelector('dd').append(cam.error ? ` Error: ${cam.error}` : ' Connected');
+      els.sysCam.appendChild(statusDot(!cam.error));
+      els.sysCam.append(cam.error ? ` Error: ${cam.error}` : ' Connected');
     } else {
-      els.sysCam.querySelector('dd').appendChild(statusDot(false));
-      els.sysCam.querySelector('dd').append(' Not installed');
+      els.sysCam.appendChild(statusDot(false));
+      els.sysCam.append(' Not installed');
     }
 
     // Pest model
-    els.sysPest.querySelector('dd').innerHTML = '';
+    els.sysPest.innerHTML = '';
     const pest = data.pest;
     if (pest.enabled && pest.configured) {
-      els.sysPest.querySelector('dd').appendChild(statusDot(!pest.error));
-      els.sysPest.querySelector('dd').append(pest.error ? ` Error: ${pest.error}` : ` Loaded (${pest.model})`);
+      els.sysPest.appendChild(statusDot(!pest.error));
+      els.sysPest.append(pest.error ? ` Error: ${pest.error}` : ` Loaded (${pest.model})`);
     } else {
-      els.sysPest.querySelector('dd').appendChild(statusDot(false));
-      els.sysPest.querySelector('dd').append(' Not configured');
+      els.sysPest.appendChild(statusDot(false));
+      els.sysPest.append(' Not configured');
     }
 
     // Automation
-    els.sysAuto.querySelector('dd').innerHTML = '';
+    els.sysAuto.innerHTML = '';
     const auto = data.automation;
     if (auto.running) {
-      els.sysAuto.querySelector('dd').appendChild(statusDot(!auto.paused));
-      els.sysAuto.querySelector('dd').append(auto.paused ? ' Paused' : ' Running');
+      els.sysAuto.appendChild(statusDot(!auto.paused));
+      els.sysAuto.append(auto.paused ? ' Paused' : ' Running');
     } else {
-      els.sysAuto.querySelector('dd').appendChild(statusDot(false));
-      els.sysAuto.querySelector('dd').append(' Stopped');
+      els.sysAuto.appendChild(statusDot(false));
+      els.sysAuto.append(' Stopped');
     }
   }
 
@@ -369,7 +366,7 @@
   }
 
   function escapeHtml(s) {
-    return s.replace(/[&<>"']/g, c => ({'&':'&','<':'<','>':'>','"':'"',"'":'''}[c]));
+    return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
   // ------------------------------------------------------------------
@@ -554,6 +551,14 @@
   els.btnSimPest.addEventListener('click', simulatePest);
   els.simConfidence.addEventListener('input', () => {
     els.simConfVal.textContent = parseFloat(els.simConfidence.value).toFixed(2);
+  });
+
+  els.relayGrid.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-on],[data-off]');
+    if (!btn) return;
+    const id = parseInt(btn.dataset.on || btn.dataset.off, 10);
+    if (btn.dataset.on) await activateRelay(id);
+    else await deactivateRelay(id);
   });
   els.clearAlerts.addEventListener('click', () => {
     els.alertsList.innerHTML = '';
