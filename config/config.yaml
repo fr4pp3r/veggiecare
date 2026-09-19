@@ -52,7 +52,7 @@ npk:
 # Soil moisture sensor (MCP3008 ADC over SPI)
 # ------------------------------------------------------------------
 soil_moisture:
-  enabled: false
+  enabled: true
   spi_bus: 0
   spi_device: 0          # CE0
   channel: 0             # moisture probe on CH0
