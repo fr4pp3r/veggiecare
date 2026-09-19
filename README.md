@@ -99,11 +99,12 @@ sudo useradd -r -M -d /home/pi/veggiecare -s /usr/sbin/nologin veggiecare
 sudo chown -R veggiecare:veggiecare /home/pi/veggiecare
 sudo chmod o+x /home/pi          # allow the service user to traverse the path
 
-# 3. Create venv & install
-cd /home/pi/veggiecare
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+# 3. Create venv & install (owned by the service account so the unit can
+#    execute it; .venv is gitignored, so it never ships with the repo)
+#    If venv creation fails with "ensurepip is not available":
+#      sudo apt install -y python3-venv
+sudo -u veggiecare /usr/bin/python3 -m venv /home/pi/veggiecare/.venv
+sudo -u veggiecare /home/pi/veggiecare/.venv/bin/pip install -r /home/pi/veggiecare/requirements.txt
 
 # 4. Install systemd unit
 sudo cp deploy/veggiecare.service /etc/systemd/system/
@@ -177,6 +178,7 @@ When PiCamera 3 + model arrive:
 |---------|--------------|-----|
 | `systemd`: `Failed at step USER ... status=217/USER` | `User=` in the unit doesn't exist — `pi` is gone on newer RPi OS images | Create the `veggiecare` account (Deployment §2) or set `User=` to a real account, then `daemon-reload` + `restart` |
 | `systemd`: `Failed to set up mount namespacing ... status=226/NAMESPACE` | `data/` or `logs/` missing (gitignored, so fresh clones lack them) | `sudo mkdir -p /home/pi/veggiecare/data /home/pi/veggiecare/logs` then `systemctl restart veggiecare` |
+| `systemd`: `Failed at step EXEC ... status=203/EXEC` | ExecStart binary missing — `.venv` is gitignored and was never created on the Pi | Create & install the venv as `veggiecare` (Deployment §3), then `systemctl restart veggiecare` |
 | `gpiozero` import error | Not on Pi or missing libs | `pip install gpiozero lgpio` or run `--simulate` |
 | `spidev` build fails | Missing kernel headers | `sudo apt install python3-spidev` or `--simulate` |
 | NPK read fails | RS485 wiring / slave ID / baud | Check A/B lines, power, `ls /dev/ttyUSB*`, try `minimalmodbus` debug |
