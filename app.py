@@ -18,6 +18,7 @@ import argparse
 import atexit
 import logging
 import logging.handlers
+import os
 import signal
 import sys
 from pathlib import Path
@@ -141,7 +142,15 @@ def main() -> int:
     controller.start()
 
     # 8. Shutdown safety — relays OFF on exit, no matter how we leave.
+    #    Guarded: systemd sends SIGTERM once via ExecStop and again itself
+    #    (KillMode=control-group), and atexit re-runs this on normal exit.
+    _shutting_down = False
+
     def shutdown() -> None:
+        nonlocal _shutting_down
+        if _shutting_down:
+            return
+        _shutting_down = True
         log.info("Shutting down — forcing all relays OFF")
         controller.stop()
         relays.shutdown()
@@ -152,10 +161,17 @@ def main() -> int:
             except Exception:
                 pass
 
+    def _handle_signal(signum, frame) -> None:
+        shutdown()
+        # Never return to waitress.serve() — it would keep serving forever
+        # and systemd would SIGKILL us after TimeoutStopSec. os._exit skips
+        # the atexit re-run of shutdown() (already done above).
+        os._exit(0)
+
     atexit.register(shutdown)
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
-            signal.signal(sig, lambda *_: shutdown())
+            signal.signal(sig, _handle_signal)
         except (ValueError, OSError):
             pass  # not available on every platform (e.g. Windows prohibits)
 

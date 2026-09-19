@@ -20,7 +20,8 @@ ExecStop=/bin/kill -TERM $MAINPID
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=5
-TimeoutStopSec=10
+# Give shutdown()'s thread joins + relay OFF time to finish before SIGKILL
+TimeoutStopSec=20
 TimeoutStartSec=30
 
 # Security hardening
