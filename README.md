@@ -88,26 +88,32 @@ pest_detection:
 ```bash
 # 1. Copy project to Pi
 sudo cp -r veggiecare /home/pi/
-sudo chown -R pi:pi /home/pi/veggiecare
 
-# 2. Create venv & install
+# 2. Create the dedicated service account.
+#    Do NOT run as 'pi' — modern Raspberry Pi OS images (Imager/first-boot
+#    wizard) use a custom username, so systemd fails with status=217/USER.
+sudo useradd -r -M -d /home/pi/veggiecare -s /usr/sbin/nologin veggiecare
+sudo chown -R veggiecare:veggiecare /home/pi/veggiecare
+sudo chmod o+x /home/pi          # allow the service user to traverse the path
+
+# 3. Create venv & install
 cd /home/pi/veggiecare
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# 3. Install systemd unit
+# 4. Install systemd unit
 sudo cp deploy/veggiecare.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable veggiecare
 sudo systemctl start veggiecare
 
-# 4. Check status
+# 5. Check status
 sudo systemctl status veggiecare
 sudo journalctl -u veggiecare -f
 ```
 
-The service runs as user `pi`, restarts on failure, and logs to the systemd journal.
+The service runs as the dedicated `veggiecare` account, restarts on failure, and logs to the systemd journal. GPIO/SPI/serial access comes from `SupplementaryGroups=gpio dialout spi i2c`, not from the account itself.
 
 ## Running Tests
 
@@ -166,6 +172,7 @@ When PiCamera 3 + model arrive:
 
 | Symptom | Likely Cause | Fix |
 |---------|--------------|-----|
+| `systemd`: `Failed at step USER ... status=217/USER` | `User=` in the unit doesn't exist — `pi` is gone on newer RPi OS images | Create the `veggiecare` account (Deployment §2) or set `User=` to a real account, then `daemon-reload` + `restart` |
 | `gpiozero` import error | Not on Pi or missing libs | `pip install gpiozero lgpio` or run `--simulate` |
 | `spidev` build fails | Missing kernel headers | `sudo apt install python3-spidev` or `--simulate` |
 | NPK read fails | RS485 wiring / slave ID / baud | Check A/B lines, power, `ls /dev/ttyUSB*`, try `minimalmodbus` debug |

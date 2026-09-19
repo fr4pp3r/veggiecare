@@ -6,8 +6,12 @@ Wants=network-online.target time-sync.target
 
 [Service]
 Type=simple
-User=pi
-Group=pi
+# Runs as a dedicated system account — see README "Deployment".
+# NOTE: 'pi' does not exist on modern Raspberry Pi OS images; using it makes
+# systemd fail at the USER step with status=217/USER ("Failed to determine
+# user credentials: No such process").
+User=veggiecare
+Group=veggiecare
 WorkingDirectory=/home/pi/veggiecare
 Environment=VEGGIECARE_CONFIG=/home/pi/veggiecare/config/config.yaml
 Environment=PYTHONPATH=/home/pi/veggiecare
@@ -23,7 +27,8 @@ TimeoutStartSec=30
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
-ProtectHome=yes
+# NOTE: ProtectHome must stay OFF — it makes /home inaccessible and would
+# shadow the ReadWritePaths below, breaking logs/ + data/ writes.
 ReadWritePaths=/home/pi/veggiecare/logs /home/pi/veggiecare/data
 # GPIO/serial/SPI access
 SupplementaryGroups=gpio dialout spi i2c
