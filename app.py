@@ -116,28 +116,70 @@ def main() -> int:
     from hardware.relay_controller import RelayController
     relays = RelayController(cfg["relays"], simulate=simulate)
 
+    # Stepper motor for camera movement
+    stepper = None
+    stepper_cfg = cfg.get("stepper", {})
+    try:
+        from hardware.stepper import StepperMotor
+        pins = stepper_cfg.get("pins", [23, 24, 25, 26])
+        stepper = StepperMotor(pins=pins, simulate=simulate or stepper_cfg.get("simulate", False))
+    except Exception as exc:
+        log.error("Failed to initialize stepper: %s", exc)
+        stepper = None
+
     # 6. Automation controller
     from automation.controller import AutomationController
     controller = AutomationController(
         config=cfg, db=db, relays=relays, state=state, sensors=sensors,
     )
 
-    # 7. Pest detection (mock or disabled) + camera stub
-    from camera.camera import NotConfiguredCamera
-    camera = NotConfiguredCamera()
+    # 7. Pest detection and camera
+    camera_cfg = cfg.get("camera", {})
+    camera = None
+    if camera_cfg.get("enabled"):
+        cam_type = camera_cfg.get("type", "usb")
+        try:
+            if cam_type == "usb":
+                from camera.usb_camera import UsbCamera
+                camera = UsbCamera(
+                    device_index=int(camera_cfg.get("device_index", 0)),
+                    image_dir=camera_cfg.get("image_dir", "data/images"),
+                    simulate=simulate,
+                )
+            else:
+                from camera.camera import NotConfiguredCamera
+                camera = NotConfiguredCamera()
+        except Exception as exc:
+            log.error("Failed to initialize camera: %s", exc)
+            from camera.camera import NotConfiguredCamera
+            camera = NotConfiguredCamera()
+    else:
+        from camera.camera import NotConfiguredCamera
+        camera = NotConfiguredCamera()
     controller.attach_camera(camera)
-    state.update_camera(configured=False, error=None)
+    state.update_camera(configured=getattr(camera, "status", lambda: {"configured": False})()["configured"], error=None)
 
     pest_cfg = cfg.get("pest_detection", {})
     if pest_cfg.get("enabled"):
-        from pest_detection.mock_detector import MockDetector
-        detector = MockDetector(pest_cfg)
+        det_type = pest_cfg.get("detector", "mock")
+        try:
+            if det_type == "yolov11n":
+                from pest_detection.yolov11_nano_detector import YoloV11NanoDetector
+                detector = YoloV11NanoDetector(pest_cfg)
+            else:
+                from pest_detection.mock_detector import MockDetector
+                detector = MockDetector(pest_cfg)
+        except Exception as exc:
+            log.error("Failed to initialize detector: %s", exc)
+            from pest_detection.mock_detector import MockDetector
+            detector = MockDetector(pest_cfg)
         controller.attach_detector(detector)
-        state.update_pest(configured=True, model="mock", error=None)
-        log.info("Pest detector enabled (mock)")
+        st = detector.status() if hasattr(detector, "status") else {"configured": True, "model": getattr(detector, "name", "unknown")}
+        state.update_pest(configured=st.get("configured", True), model=st.get("model"), error=None)
+        log.info("Pest detector enabled (%s)", st.get("model", "detector"))
     else:
         state.update_pest(configured=False, model=None, error=None)
-        log.info("Pest detection disabled (camera/model not configured yet)")
+        log.info("Pest detection disabled")
 
     controller.start()
 

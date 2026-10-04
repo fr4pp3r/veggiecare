@@ -112,9 +112,10 @@ relays:
 # until then; the rest of the system runs unaffected.
 # ------------------------------------------------------------------
 pest_detection:
-  enabled: false
+  enabled: true
   relay_id: 3
-  detector: mock         # only 'mock' exists today
+  detector: mock
+
   confidence_threshold: 0.70
   capture_interval_seconds: 300
   relay_activation_duration_seconds: 120
@@ -143,6 +144,17 @@ pest_detection:
 # added later without touching the rest of the system.
 # ------------------------------------------------------------------
 camera:
-  enabled: false
+  enabled: true
+  type: usb  # use USB webcam
+  device_index: 0
   capture_interval_seconds: 300
   image_dir: data/images
+# ------------------------------------------------------------------
+# Stepper motor (camera movement)
+# ------------------------------------------------------------------
+stepper:
+  enabled: true
+  pins: [23, 24, 25, 26]
+  steps_per_plant: 512  # ~90 degrees
+  delay: 0.003
+  simulate: false

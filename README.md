@@ -173,6 +173,24 @@ When PiCamera 3 + model arrive:
 3. Set `pest_detection.enabled: true` and `camera.enabled: true` in config
 4. Restart service — no other code changes needed
 
+
+## Hardware Integrations
+
+### USB Webcam
+- Uses OpenCV (opencv-python-headless) for USB webcam capture
+- Configured in config/config.yaml under camera: with 	ype: usb and device_index
+- Fallback to simulated mode when hardware unavailable
+
+### Stepper Motor (Camera Movement)
+- 28BYJ-48 stepper motor controlled via gpiozero on GPIO pins (default 23,24,25,26)
+- Module: hardware/stepper.py with StepperMotor class
+- Tested with 	ests/stepper_test.py and 	ests/manual/stepper_test.py
+
+### Pest Detection
+- YOLOv11 Nano (classification) model for pest identification
+- Trained on local dataset in Pest-Data/
+- Automatically falls back to mock detector if model unavailable
+
 ## Troubleshooting
 
 | Symptom | Likely Cause | Fix |
@@ -191,3 +209,42 @@ When PiCamera 3 + model arrive:
 ## License
 
 MIT
+
+## AI Model Training
+
+This project includes a YOLOv11 Nano classification model trained on pest images.
+
+### Dataset
+- Place your dataset in Pest-Data/ with 	rain/ and 	est/ subdirectories, each containing class folders (e.g., phids/, eetle/, etc.)
+- A sample pest_data.yaml is provided for YOLO classification training
+
+### Training
+`ash
+python train_cls.py
+`
+Trained weights will be saved to 
+uns/veggiecare_cls_v1/weights/best.pt. The detector automatically uses the trained weights if present.
+
+### Inference
+The YoloV11NanoDetector in pest_detection/yolov11_nano_detector.py supports both detection and classification outputs from YOLO models and maps predictions to configured pest classes.
+
+## Licenses
+
+This project is released under the MIT License. See [LICENSE](LICENSE) for details.
+
+Third-party dependencies and their licenses (as commonly distributed):
+- Flask (BSD-3-Clause)
+- Werkzeug/itsdangerous/blinker (BSD-3-Clause variants)
+- waitress (ZPL 2.1)
+- gpiozero (BSD-3-Clause)
+- PyYAML (MIT)
+- ruamel.yaml (MIT)
+- minimalmodbus/pyserial (various permissive)
+- opencv-python/opencv-python-headless (Apache 2.0)
+- ultralytics (AGPL-3.0) - used for YOLO model training/inference
+- torch/torchvision (BSD-style/Apache 2.0 mixed)
+- numpy (BSD)
+- matplotlib (PSF/BSD-style)
+- polars (MIT)
+
+Note: If you redistribute builds using ultralytics/YOLO models, ensure compliance with AGPL-3.0 requirements. For internal/local use (as in this project), AGPL-3.0 terms apply to the combined work when distributed.

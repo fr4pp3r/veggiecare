@@ -291,3 +291,5 @@ class Database:
                 self._conn.close()
             except sqlite3.Error:
                 pass
+
+    # Export helpers

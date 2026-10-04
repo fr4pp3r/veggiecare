@@ -1,0 +1,5 @@
+path: D:/Projects/veggiecare/Pest-Data
+train: train
+val: test
+nc: 9
+names: ['aphids', 'armyworm', 'beetle', 'bollworm', 'grasshopper', 'mites', 'mosquito', 'sawfly', 'stem_borer']
