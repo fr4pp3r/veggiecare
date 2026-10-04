@@ -1,4 +1,31 @@
-# VeggieCare - System Documentation
+﻿## Raspberry Pi 5 Deployment
+## Raspberry Pi 5 Deployment
+
+### Option 1: Full automated setup (recommended)
+
+On the Raspberry Pi, run from inside the repo:
+
+`ash
+chmod +x scripts/setup_rpi5.sh scripts/setup_rpi5_deps.sh
+./scripts/setup_rpi5.sh
+`
+
+This installs all required build/system dependencies (build-essential, cmake, pkg-config, swig, gfortran, python3-dev, image/video/math libs, FFmpeg, libffi/libssl, spidev, i2c/spi tools), creates the eggiecare user with hardware groups, sets up venv and dependencies, and installs/enables the systemd service.
+
+### Option 2: System deps only
+
+`ash
+chmod +x scripts/setup_rpi5_deps.sh
+./scripts/setup_rpi5_deps.sh
+`
+
+### Notes
+
+- Requires sudo on the Pi.
+- Log out and back in (or reboot) after installing system deps so group membership (gpio/dialout/spi/i2c) takes effect.
+- The included scripts target Debian/Raspberry Pi OS Bookworm on RPi5.
+
+## Deployment VeggieCare - System Documentation
 
 ## Table of Contents
 - [Overview](#overview)
