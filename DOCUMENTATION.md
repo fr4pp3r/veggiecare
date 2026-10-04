@@ -407,3 +407,13 @@ See [LICENSE](LICENSE) for project license. Third-party dependencies have variou
 - Remote notifications (email/SMS)
 - OTA updates
 - Expanded pest classes and model retraining pipeline
+
+## Low Disk Space Tips (RPi5)
+
+If you hit `No space left on device` during pip install:
+- Ensure at least 8-10 GB free (OpenCV/Ultralytics can be large). If using small SD card, use a larger card or external USB SSD.
+- The setup scripts now use `--no-cache-dir`, prefer binary wheels, and clean caches. Also try `TMPDIR=/var/tmp`.
+- Expand filesystem if needed: `sudo raspi-config` -> Advanced -> Expand Filesystem, then reboot.
+- Optional swap (temporary): `sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile` (remember to disable/remove after install if not wanted).
+
+**Note on OpenCV size:** `opencv-python` is large (~300-700MB). On storage-constrained RPi (small SD cards), consider switching to `opencv-python-headless>=4.10.0` in `requirements.txt` and commenting out the regular one. The setup scripts also clean caches and use `--no-cache-dir` to reduce temp usage.

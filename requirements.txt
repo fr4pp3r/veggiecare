@@ -1,4 +1,4 @@
-# ------------------------------------------------------------------
+﻿# ------------------------------------------------------------------
 # VeggieCare - Raspberry Pi 5 Smart Plant Monitoring and Control
 # core dependencies
 # ------------------------------------------------------------------
@@ -22,5 +22,8 @@ spidev>=3.6
 # Development / testing only
 # ------------------------------------------------------------------
 pytest>=8.0
-opencv-python>=4.10.0
+# opencv-python>=4.10.0  # Use opencv-python-headless on RPi to save space
 ultralytics>=8.3.0
+
+# Optional: use headless OpenCV on RPi to save space
+# opencv-python-headless>=4.10.0

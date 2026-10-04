@@ -29,13 +29,21 @@ sudo mkdir -p "$VEGGIECARE_DIR/data" "$VEGGIECARE_DIR/logs"
 echo "--- Setting ownership ---"
 sudo chown -R $SERVICE_USER:$SERVICE_USER /home/veggiecare/veggiecare
 
+echo "--- Checking disk space ---"
+df -h / /home 2>/dev/null || true
+
+echo "--- Cleaning pip/cache to free space ---"
+pip3 cache purge 2>/dev/null || true
+sudo rm -rf /root/.cache/pip /tmp/pip-* /var/tmp/pip-* 2>/dev/null || true
+
 echo "--- Setting up Python virtual environment ---"
 sudo -u $SERVICE_USER bash -c "
+  set -e
   cd $VEGGIECARE_DIR
   python3 -m venv .venv
   source .venv/bin/activate
-  pip install --upgrade pip wheel setuptools
-  pip install -r requirements.txt
+  pip install --upgrade pip wheel setuptools --no-cache-dir
+  TMPDIR=/var/tmp PIP_CACHE_DIR=/var/tmp/pip-cache pip install -r requirements.txt --no-cache-dir --prefer-binary
 "
 
 echo "--- Installing systemd service ---"

@@ -7,7 +7,7 @@ sudo apt-get update -y
 sudo apt-get upgrade -y
 
 echo "--- Installing build essentials and compilers ---"
-sudo apt-get install -y \
+sudo apt-get install -y --no-install-recommends \
   build-essential \
   cmake \
   pkg-config \
@@ -17,7 +17,7 @@ sudo apt-get install -y \
   gfortran
 
 echo "--- Installing Python development headers ---"
-sudo apt-get install -y \
+sudo apt-get install -y --no-install-recommends \
   python3-dev \
   python3-pip \
   python3-venv \
@@ -25,7 +25,7 @@ sudo apt-get install -y \
   python3-setuptools
 
 echo "--- Installing image/video/math libraries ---"
-sudo apt-get install -y \
+sudo apt-get install -y --no-install-recommends \
   libjpeg-dev \
   libpng-dev \
   libtiff-dev \
@@ -36,26 +36,30 @@ sudo apt-get install -y \
   libatlas-base-dev
 
 echo "--- Installing FFmpeg/video libraries ---"
-sudo apt-get install -y \
+sudo apt-get install -y --no-install-recommends \
   libavcodec-dev \
   libavformat-dev \
   libswscale-dev \
   libv4l-dev
 
 echo "--- Installing crypto/ffi/hdf5 libraries ---"
-sudo apt-get install -y \
+sudo apt-get install -y --no-install-recommends \
   libffi-dev \
   libssl-dev \
   libhdf5-dev \
   libhdf5-serial-dev
 
 echo "--- Installing hardware interface tools ---"
-sudo apt-get install -y \
+sudo apt-get install -y --no-install-recommends \
   i2c-tools \
   spi-tools \
   python3-spidev \
   usbutils \
   udev
+
+sudo apt-get clean
+sudo apt-get autoremove -y
+sudo rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
 if command -v raspi-config >/dev/null 2>&1; then
   sudo raspi-config nonint do_spi 0 2>/dev/null || true
