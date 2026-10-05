@@ -1,12 +1,10 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 echo "=== VeggieCare RPi5 System Dependencies Setup ==="
 
 sudo apt-get update -y
-# No blanket `apt-get upgrade` here: it upgrades every installed package
-# (pulling in unrelated desktop packages such as ghostscript), and a single
-# dpkg failure aborts this script under `set -e`. Install only what is listed.
+# No blanket apt-get upgrade (project constraint: avoid pulling in unrelated packages)
 
 echo "--- Installing build essentials and compilers ---"
 sudo apt-get install -y --no-install-recommends \
@@ -49,7 +47,8 @@ sudo apt-get install -y --no-install-recommends \
   libffi-dev \
   libssl-dev \
   libhdf5-dev \
-  libhdf5-serial-dev
+  libhdf5-serial-dev \
+  liblgpio-dev
 
 echo "--- Installing hardware interface tools ---"
 sudo apt-get install -y --no-install-recommends \
@@ -69,8 +68,8 @@ if command -v raspi-config >/dev/null 2>&1; then
   sudo raspi-config nonint do_serial 2 2>/dev/null || true
 fi
 
-echo "--- Adding current user to hardware groups ---"
-sudo usermod -a -G gpio,dialout,spi,i2c "$USER" 2>/dev/null || true
+CURRENT_USER="${USER:-$(whoami)}"
+sudo usermod -a -G gpio,dialout,spi,i2c "$CURRENT_USER" 2>/dev/null || true
 
 echo ""
 echo "=== System dependencies installed successfully ==="

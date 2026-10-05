@@ -1,14 +1,14 @@
 #!/bin/bash
-set -e
-
-VEGGIECARE_DIR="/home/veggiecare/veggiecare"
-SERVICE_USER="veggiecare"
+set -euo pipefail
 
 echo "=== VeggieCare RPi5 Full Installation ==="
 
 if [ -f "scripts/setup_rpi5_deps.sh" ]; then
   bash scripts/setup_rpi5_deps.sh
 fi
+
+SERVICE_USER="veggiecare"
+VEGGIECARE_DIR="/home/veggiecare/veggiecare"
 
 if ! id "$SERVICE_USER" >/dev/null 2>&1; then
   echo "--- Creating user $SERVICE_USER ---"
@@ -41,21 +41,18 @@ sudo mount -o remount,size=3G /tmp 2>/dev/null || true
 df -h /tmp 2>/dev/null || true
 
 echo "--- Setting up Python virtual environment ---"
-sudo -u $SERVICE_USER bash -c "
-  set -e
-  cd $VEGGIECARE_DIR
-  export TMPDIR=$VEGGIECARE_DIR/tmp
-  export PIP_CACHE_DIR=$VEGGIECARE_DIR/.pip-cache
+sudo -u $SERVICE_USER bash -c '
+  set -euo pipefail
+  cd '"$VEGGIECARE_DIR"'
+  export TMPDIR='"$VEGGIECARE_DIR"'/tmp
+  export PIP_CACHE_DIR='"$VEGGIECARE_DIR"'/.pip-cache
+  export PIP_NO_CACHE_DIR=1
   python3 -m venv .venv
-source .venv/bin/activate
+  source .venv/bin/activate
   pip install --upgrade pip wheel setuptools --no-cache-dir --prefer-binary
   pip install -r requirements.txt --no-cache-dir --prefer-binary
-  # ultralytics is installed with --no-deps on purpose: its hard dependency on
-  # the GUI opencv-python would overwrite the headless cv2/ and break the
-  # camera import on a headless Pi (libGL.so.1). requirements.txt already lists
-  # the rest of ultralytics' dependency tree explicitly.
-  pip install --no-deps \"ultralytics>=8.4.0\" --no-cache-dir
-"
+  pip install --no-deps "ultralytics>=8.4.0" --no-cache-dir
+'
 
 echo "--- Installing systemd service ---"
 sudo cp "$VEGGIECARE_DIR/deploy/veggiecare.service" /etc/systemd/system/
