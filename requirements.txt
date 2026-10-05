@@ -31,7 +31,15 @@ gpiozero>=2.0
 # the preferred factory on Pi 5 / kernel 6.x and only needs the `gpio` group.
 # Not imported by name anywhere - gpiozero resolves it as a pin factory
 # through its entry points.
-lgpio>=0.2.2.0
+#
+# WHY TWO LINES: upstream lgpio publishes wheels for CPython 3.9-3.12 only, so
+# on Python 3.13+ (Raspberry Pi OS Trixie) pip falls back to the sdist and runs
+# SWIG - which needs liblgpio-dev and can fail outright. adafruit-lgpio is a
+# drop-in `import lgpio` replacement shipping prebuilt aarch64/armv7l wheels for
+# 3.13+, so no compiler or SWIG is involved. piwheels is not an option here: it
+# does not publish aarch64 wheels at all.
+lgpio>=0.2.2.0; python_version<'3.13' or platform_machine not in ('aarch64', 'armv7l')
+adafruit-lgpio>=0.2.2.0; sys_platform=='linux' and python_version>='3.13' and platform_machine in ('aarch64', 'armv7l')
 
 # Comment-preserving YAML round-trip for the dashboard Settings page
 ruamel.yaml>=0.18
