@@ -38,8 +38,13 @@ gpiozero>=2.0
 # drop-in `import lgpio` replacement shipping prebuilt aarch64/armv7l wheels for
 # 3.13+, so no compiler or SWIG is involved. piwheels is not an option here: it
 # does not publish aarch64 wheels at all.
-lgpio>=0.2.2.0; python_version<'3.13' or platform_machine not in ('aarch64', 'armv7l')
-adafruit-lgpio>=0.2.2.0; sys_platform=='linux' and python_version>='3.13' and platform_machine in ('aarch64', 'armv7l')
+#
+# Markers deliberately use only ==, !=, <, >=, and, or and parentheses. The
+# newer `python_version in ...` / `platform_machine not in (...)` form is not
+# understood by older pip and aborts the whole install with
+# InvalidMarker: Expected a marker variable or quoted string.
+lgpio>=0.2.2.0; python_version<'3.13' or (platform_machine!='aarch64' and platform_machine!='armv7l')
+adafruit-lgpio>=0.2.2.0; sys_platform=='linux' and python_version>='3.13' and (platform_machine=='aarch64' or platform_machine=='armv7l')
 
 # Comment-preserving YAML round-trip for the dashboard Settings page
 ruamel.yaml>=0.18
