@@ -1,0 +1,18 @@
+# Normalize line endings on checkout. The Pi target runs these files under
+# bash and parses the config with strict readers: a CRLF turns `set -e` into
+# `set -e\r` (invalid option) and corrupts shebang lines.
+* text=auto eol=lf
+
+*.sh      text eol=lf
+*.py      text eol=lf
+*.txt     text eol=lf
+*.yaml    text eol=lf
+*.yml     text eol=lf
+*.service text eol=lf
+*.md      text eol=lf
+
+# Model weights and datasets are binary - never normalize.
+*.pt      binary
+*.db      binary
+*.png     binary
+*.jpg     binary

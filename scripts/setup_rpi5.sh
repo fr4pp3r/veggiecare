@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 set -e
 
 VEGGIECARE_DIR="/home/veggiecare/veggiecare"

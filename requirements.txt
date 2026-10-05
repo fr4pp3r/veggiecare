@@ -1,4 +1,4 @@
-﻿# ------------------------------------------------------------------
+# ------------------------------------------------------------------
 # VeggieCare - Raspberry Pi 5 Smart Plant Monitoring and Control
 # Single consolidated dependency set: core + YOLO pest detection.
 #
@@ -25,18 +25,18 @@ minimalmodbus>=2.1
 pyserial>=3.5
 gpiozero>=2.0
 
-# GPIO pin driver — REQUIRED on Linux/ARM. gpiozero>=2.0 ships no backend of
+# GPIO pin driver - REQUIRED on Linux/ARM. gpiozero>=2.0 ships no backend of
 # its own: without one it warns "Falling back from lgpio/rpigpio/pigpio" and
 # every GpioRelay is marked unavailable (all relays die silently). lgpio is
 # the preferred factory on Pi 5 / kernel 6.x and only needs the `gpio` group.
-# Not imported by name anywhere — gpiozero resolves it as a pin factory
+# Not imported by name anywhere - gpiozero resolves it as a pin factory
 # through its entry points.
 lgpio>=0.2.2.0
 
 # Comment-preserving YAML round-trip for the dashboard Settings page
 ruamel.yaml>=0.18
 
-# OpenCV — REQUIRED for the USB camera (capture + MJPEG live view).
+# OpenCV - REQUIRED for the USB camera (capture + MJPEG live view).
 # Without it `import cv2` fails inside camera/usb_camera.py, the camera
 # silently degrades to simulated frames, and the dashboard reports the
 # working webcam as "Not installed". Headless build: no GUI libs.
@@ -55,7 +55,7 @@ spidev>=3.6
 # YOLO pest detection
 # ------------------------------------------------------------------
 # CPU-only torch. Without this line pip resolves the default PyPI wheel,
-# which bundles CUDA and is ~454 MB on aarch64 — large enough to exhaust a
+# which bundles CUDA and is ~454 MB on aarch64 - large enough to exhaust a
 # small SD card mid-download (OSError 28). The +cpu build from PyTorch's
 # index is a fraction of the size and has no wasted CUDA payload.
 --extra-index-url https://download.pytorch.org/whl/cpu
@@ -70,7 +70,7 @@ torchvision==0.29.1+cpu
 # ultralytics' own dependency tree, listed explicitly because it is
 # installed with --no-deps (see the OpenCV note at the top of this file).
 # Keep this list in sync with ultralytics' requires_dist when upgrading.
-# `opencv-python` is deliberately absent — see above.
+# `opencv-python` is deliberately absent - see above.
 numpy>=1.23.0
 matplotlib>=3.3.0
 pillow>=7.1.2

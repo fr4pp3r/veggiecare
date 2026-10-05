@@ -1,10 +1,12 @@
-﻿#!/bin/bash
+#!/bin/bash
 set -e
 
 echo "=== VeggieCare RPi5 System Dependencies Setup ==="
 
 sudo apt-get update -y
-sudo apt-get upgrade -y
+# No blanket `apt-get upgrade` here: it upgrades every installed package
+# (pulling in unrelated desktop packages such as ghostscript), and a single
+# dpkg failure aborts this script under `set -e`. Install only what is listed.
 
 echo "--- Installing build essentials and compilers ---"
 sudo apt-get install -y --no-install-recommends \
