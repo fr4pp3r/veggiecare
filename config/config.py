@@ -21,6 +21,7 @@ DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "config.yaml"
 
 _LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
 _DETECTOR_MODES = ("none", "random", "sequential")
+_DETECTORS = ("mock", "yolov11n")
 
 # A real V4L2 node always carries an index; bare "/dev/video" cannot exist.
 _VIDEO_NODE_RE = re.compile(r"^/dev/video\d+$")
@@ -192,7 +193,7 @@ def _validate_npk(section: dict, errors: list[str]) -> None:
 def _validate_pest(section: dict, errors: list[str], relay_ids: set[int]) -> None:
     path = "pest_detection"
     _bool(section, "enabled", errors, path)
-    _in(section, "detector", ("mock",), errors, path)
+    _in(section, "detector", _DETECTORS, errors, path)
     _int(section, "relay_id", errors, path, minimum=1)
     relay_id = section.get("relay_id")
     if isinstance(relay_id, int) and not isinstance(relay_id, bool):

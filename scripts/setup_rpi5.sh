@@ -47,9 +47,14 @@ sudo -u $SERVICE_USER bash -c "
   export TMPDIR=$VEGGIECARE_DIR/tmp
   export PIP_CACHE_DIR=$VEGGIECARE_DIR/.pip-cache
   python3 -m venv .venv
-  source .venv/bin/activate
+source .venv/bin/activate
   pip install --upgrade pip wheel setuptools --no-cache-dir --prefer-binary
   pip install -r requirements.txt --no-cache-dir --prefer-binary
+  # ultralytics is installed with --no-deps on purpose: its hard dependency on
+  # the GUI opencv-python would overwrite the headless cv2/ and break the
+  # camera import on a headless Pi (libGL.so.1). requirements.txt already lists
+  # the rest of ultralytics' dependency tree explicitly.
+  pip install --no-deps \"ultralytics>=8.4.0\" --no-cache-dir
 "
 
 echo "--- Installing systemd service ---"

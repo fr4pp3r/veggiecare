@@ -23,8 +23,11 @@ cd veggiecare
 python -m venv .venv
 source .venv/bin/activate
 
-# 3. Install dependencies
+# 3. Install dependencies (includes CPU-only torch + YOLO support)
 pip install -r requirements.txt
+# ultralytics goes in separately with --no-deps: its GUI opencv-python
+# dependency would break the headless camera build. See requirements.txt.
+pip install --no-deps "ultralytics>=8.4.0"
 
 # 4. Run in simulated mode (no hardware needed)
 python app.py --simulate

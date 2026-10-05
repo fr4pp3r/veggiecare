@@ -107,14 +107,19 @@ relays:
       activation_duration_seconds: 120
 
 # ------------------------------------------------------------------
-# Pest detection - NOT CONFIGURED on the Pi yet.
-# Camera module and AI model will be added later. Keep `enabled: false`
-# until then; the rest of the system runs unaffected.
+# Pest detection. `detector: mock` fakes results and needs no model;
+# `yolov11n` runs real inference (CPU-only torch, ~seconds per frame on
+# a Pi 5). Switch back to mock to disable AI without uninstalling it.
 # ------------------------------------------------------------------
 pest_detection:
   enabled: true
   relay_id: 3
-  detector: mock
+  detector: yolov11n
+
+  # Optional explicit checkpoint, used when the trained run above is
+  # absent. Relative paths resolve against the repo root. Leave blank and
+  # the stock yolo11n-cls.pt weights are downloaded on first use.
+  model_path:
 
   confidence_threshold: 0.70
   capture_interval_seconds: 300

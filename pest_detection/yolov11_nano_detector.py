@@ -15,6 +15,21 @@ class YoloV11NanoDetector(PestDetector):
 
     name = "yolov11n"
 
+    _REPO_ROOT = Path(__file__).resolve().parent.parent
+    _TRAINED_CHECKPOINT = Path("runs/veggiecare_cls_v1/weights/best.pt")
+    _STOCK_MODEL = "yolo11n-cls.pt"
+
+    def _resolve_model_name(self) -> str:
+        """Pick a checkpoint: trained run first, then configured path, then stock weights."""
+        candidates = [self._REPO_ROOT / self._TRAINED_CHECKPOINT]
+        if self._model_path:
+            configured = Path(self._model_path).expanduser()
+            candidates.append(configured if configured.is_absolute() else self._REPO_ROOT / configured)
+        for candidate in candidates:
+            if candidate.is_file():
+                return str(candidate)
+        return self._STOCK_MODEL
+
     def __init__(self, cfg: dict[str, Any]) -> None:
         self._cfg = cfg
         self._confidence_threshold = float(cfg.get("confidence_threshold", 0.70))
@@ -25,13 +40,7 @@ class YoloV11NanoDetector(PestDetector):
         try:
             from ultralytics import YOLO  # type: ignore
 
-            import os
-
-            trained = r"D:/Projects/veggiecare/runs/veggiecare_cls_v1/weights/best.pt"
-            if os.path.exists(trained):
-                model_name = trained
-            else:
-                model_name = self._model_path or "yolo11n-cls.pt"
+            model_name = self._resolve_model_name()
             self._model = YOLO(model_name)
             logger.info("YOLOv11 Nano model loaded: %s", model_name)
         except Exception as exc:

@@ -1,8 +1,23 @@
 ﻿# ------------------------------------------------------------------
 # VeggieCare - Raspberry Pi 5 Smart Plant Monitoring and Control
-# core dependencies
+# Single consolidated dependency set: core + YOLO pest detection.
+#
+# Install with TWO commands (scripts/setup_rpi5.sh runs both):
+#
+#     pip install -r requirements.txt
+#     pip install --no-deps "ultralytics>=8.4.0"
+#
+# WHY TWO COMMANDS: ultralytics hard-requires the GUI `opencv-python`,
+# which installs into the SAME cv2/ directory as opencv-python-headless
+# and needs libGL.so.1 that a headless Pi lacks -> ImportError on import.
+# So we install ultralytics with --no-deps and list its dependencies
+# explicitly below, keeping the headless build the only OpenCV present.
+# Nothing in this project calls cv2.imshow (capture + imwrite + JPEG only).
 # ------------------------------------------------------------------
 
+# ------------------------------------------------------------------
+# Core
+# ------------------------------------------------------------------
 PyYAML>=6.0
 Flask>=3.0
 waitress>=3.0
@@ -14,6 +29,8 @@ gpiozero>=2.0
 # its own: without one it warns "Falling back from lgpio/rpigpio/pigpio" and
 # every GpioRelay is marked unavailable (all relays die silently). lgpio is
 # the preferred factory on Pi 5 / kernel 6.x and only needs the `gpio` group.
+# Not imported by name anywhere — gpiozero resolves it as a pin factory
+# through its entry points.
 lgpio>=0.2.2.0
 
 # Comment-preserving YAML round-trip for the dashboard Settings page
@@ -22,8 +39,11 @@ ruamel.yaml>=0.18
 # OpenCV — REQUIRED for the USB camera (capture + MJPEG live view).
 # Without it `import cv2` fails inside camera/usb_camera.py, the camera
 # silently degrades to simulated frames, and the dashboard reports the
-# working webcam as "Not installed".
-# Use the headless build on the Pi: no GUI libs, much smaller.
+# working webcam as "Not installed". Headless build: no GUI libs.
+#
+# This must stay the ONLY OpenCV in this file. The GUI build
+# (opencv-python, an ultralytics dependency) installs into the same cv2/
+# directory and needs libGL.so.1, which a headless Pi usually lacks.
 opencv-python-headless>=4.10.0
 
 # Raspberry Pi only (Linux/ARM): required for the soil moisture sensor
@@ -32,7 +52,39 @@ opencv-python-headless>=4.10.0
 spidev>=3.6
 
 # ------------------------------------------------------------------
+# YOLO pest detection
+# ------------------------------------------------------------------
+# CPU-only torch. Without this line pip resolves the default PyPI wheel,
+# which bundles CUDA and is ~454 MB on aarch64 — large enough to exhaust a
+# small SD card mid-download (OSError 28). The +cpu build from PyTorch's
+# index is a fraction of the size and has no wasted CUDA payload.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# Pinned as an exact pair: torchvision declares an exact torch requirement,
+# and the Pi cannot afford an untested upgrade. `==2.14.1` still matches the
+# local version `2.14.1+cpu` (PEP 440 ignores local segments when the
+# specifier omits one), so torchvision's own pin is satisfied.
+torch==2.14.1+cpu
+torchvision==0.29.1+cpu
+
+# ultralytics' own dependency tree, listed explicitly because it is
+# installed with --no-deps (see the OpenCV note at the top of this file).
+# Keep this list in sync with ultralytics' requires_dist when upgrading.
+# `opencv-python` is deliberately absent — see above.
+numpy>=1.23.0
+matplotlib>=3.3.0
+pillow>=7.1.2
+requests>=2.23.0
+psutil>=5.8.0
+polars>=0.20.0
+nvidia-ml-py>=12.0.0
+ultralytics-thop>=2.2.2
+ultralytics-platform>=0.1.45
+
+# Pillow is also used directly by camera/usb_camera.py to render simulated
+# captures; it is listed above on ultralytics' behalf but relied upon here.
+
+# ------------------------------------------------------------------
 # Development / testing only
 # ------------------------------------------------------------------
 pytest>=8.0
-ultralytics>=8.3.0

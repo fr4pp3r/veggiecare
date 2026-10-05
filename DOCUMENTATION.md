@@ -335,6 +335,7 @@ python -m venv .venv
 # Windows: .venv\Scripts\activate
 # Linux: source .venv/bin/activate
 pip install -r requirements.txt
+pip install --no-deps "ultralytics>=8.4.0"   # see requirements.txt for why
 ```
 
 ### Running in Simulation
@@ -411,9 +412,10 @@ See [LICENSE](LICENSE) for project license. Third-party dependencies have variou
 ## Low Disk Space Tips (RPi5)
 
 If you hit `No space left on device` during pip install:
-- Ensure at least 8-10 GB free (OpenCV/Ultralytics can be large). If using small SD card, use a larger card or external USB SSD.
-- The setup scripts now use `--no-cache-dir`, prefer binary wheels, and clean caches. Also try `TMPDIR=/var/tmp`.
+- Ensure at least 4-6 GB free. If using a small SD card, use a larger card or external USB SSD.
+- `requirements.txt` already pins **CPU-only** torch from `download.pytorch.org/whl/cpu`. Without that `--extra-index-url`, pip resolves the default PyPI wheel, which bundles CUDA and is ~454 MB on aarch64 — that alone can exhaust a small card mid-download.
+- The setup scripts use `--no-cache-dir`, prefer binary wheels, and clean caches. They also point `TMPDIR` at the project dir and remount `/tmp` larger for the session.
 - Expand filesystem if needed: `sudo raspi-config` -> Advanced -> Expand Filesystem, then reboot.
 - Optional swap (temporary): `sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile` (remember to disable/remove after install if not wanted).
 
-**Note on OpenCV size:** `opencv-python` is large (~300-700MB). On storage-constrained RPi (small SD cards), consider switching to `opencv-python-headless>=4.10.0` in `requirements.txt` and commenting out the regular one. The setup scripts also clean caches and use `--no-cache-dir` to reduce temp usage.
+**Note on OpenCV:** this project stays on `opencv-python-headless` and never installs the GUI build. `ultralytics` hard-requires `opencv-python`, which lands in the same `cv2/` directory and needs `libGL.so.1` (absent on a headless Pi). That is why ultralytics is installed with `--no-deps` and its dependency tree is listed explicitly in `requirements.txt`. If you ever switch to the GUI build instead, drop the headless line and `sudo apt install libgl1 libglib2.0-0`.
