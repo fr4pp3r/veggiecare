@@ -1,8 +1,13 @@
-"""Camera interface — stub until the PiCamera Module 3 is integrated.
+"""Camera interface.
 
 The rest of VeggieCare should only call :meth:`Camera.capture`. If the
 camera is not configured, :meth:`NotConfiguredCamera.capture` returns
 ``None`` and the automation controller skips the pest-detection cycle.
+
+:meth:`Camera.status` is the dashboard's only view of the hardware, so it
+must always carry enough detail to explain *why* a camera is unusable —
+not just a boolean. A missing ``error``/``message`` is what previously
+made a perfectly good USB webcam report "Not installed".
 """
 
 from __future__ import annotations
@@ -10,7 +15,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 
 class Camera(ABC):
@@ -23,7 +28,29 @@ class Camera(ABC):
         """Capture an image and return the file path, or None on failure."""
 
     def status(self) -> dict[str, Any]:
-        return {"configured": True, "name": self.name}
+        """Describe the camera for the dashboard.
+
+        Subclasses must keep these keys:
+            configured  -- True only when a real, working device is present
+            name        -- backend identifier
+            error       -- actionable reason, or None when healthy
+            message     -- short human-readable status line
+        Optional: device_path, device_index, width, height, fps, simulated.
+        """
+        return {
+            "configured": True,
+            "name": self.name,
+            "error": None,
+            "message": "Connected",
+        }
+
+    def stream(self, fps: float | None = None) -> Iterator[bytes]:
+        """Yield JPEG-encoded frames for the dashboard live view.
+
+        The default implementation yields nothing, which makes the MJPEG
+        endpoint return 503 rather than hanging.
+        """
+        return iter(())
 
     def close(self) -> None:
         pass
@@ -38,7 +65,14 @@ class NotConfiguredCamera(Camera):
         return None
 
     def status(self) -> dict[str, Any]:
-        return {"configured": False, "name": "not_configured", "message": "Camera not installed"}
+        return {
+            "configured": False,
+            "name": self.name,
+            "simulated": False,
+            "device_path": None,
+            "error": None,
+            "message": "Camera not installed",
+        }
 
 
 class PiCamera(Camera):
@@ -55,4 +89,11 @@ class PiCamera(Camera):
         )
 
     def status(self) -> dict[str, Any]:
-        return {"configured": False, "name": "pi_camera_v3", "message": "Placeholder — not yet implemented"}
+        return {
+            "configured": False,
+            "name": self.name,
+            "simulated": False,
+            "device_path": None,
+            "error": None,
+            "message": "Placeholder — not yet implemented",
+        }

@@ -14,7 +14,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from flask import Blueprint, current_app, jsonify, render_template, request
+from flask import Blueprint, Response, current_app, jsonify, render_template, request
 
 from config import (
     ConfigError,
@@ -55,6 +55,196 @@ def _controller():
 @bp.route("/")
 def index():
     return render_template("dashboard.html")
+
+
+@bp.route("/camera")
+def camera_page():
+    return render_template("camera.html")
+
+
+# ======================================================================
+# JSON API — camera hardware and live view
+# ======================================================================
+
+def _camera():
+    return getattr(current_app, "veggiecare_camera", None)
+
+
+def _camera_status() -> dict:
+    cam = _camera()
+    if cam is None:
+        return {
+            "configured": False,
+            "name": None,
+            "device_path": None,
+            "device_index": None,
+            "width": None,
+            "height": None,
+            "fps": None,
+            "simulated": False,
+            "error": "No camera backend was initialized.",
+            "message": "Camera unavailable",
+        }
+    try:
+        status = cam.status()
+    except Exception as exc:
+        log.exception("camera.status() failed")
+        return {
+            "configured": False,
+            "name": getattr(cam, "name", None),
+            "device_path": None,
+            "device_index": None,
+            "width": None,
+            "height": None,
+            "fps": None,
+            "simulated": False,
+            "error": str(exc),
+            "message": "Camera unavailable",
+        }
+    status.setdefault("configured", False)
+    status.setdefault("error", None)
+    return status
+
+
+@bp.route("/api/camera/status")
+def api_camera_status():
+    from camera.usb_camera import cv2_availability, list_video_devices
+
+    available, cv2_error = cv2_availability()
+    return jsonify({
+        "camera": _camera_status(),
+        "devices": list_video_devices(),
+        "cv2_available": available,
+        "cv2_error": cv2_error,
+    })
+
+
+@bp.route("/api/camera/devices")
+def api_camera_devices():
+    from camera.usb_camera import list_video_devices
+
+    return jsonify({"devices": list_video_devices()})
+
+
+@bp.route("/api/camera/probe", methods=["POST"])
+def api_camera_probe():
+    """Test whether specific video nodes actually deliver frames.
+
+    On a Pi with libcamera there are many /dev/video* nodes and most are
+    metadata-only, so this is how the operator finds the real webcam
+    without guesswork.
+    """
+    from camera.usb_camera import candidate_devices, cv2_availability, load_cv2, probe_device
+
+    available, cv2_error = cv2_availability()
+    if not available:
+        return jsonify({"ok": False, "error": cv2_error}), 503
+
+    body = request.get_json(silent=True) or {}
+    targets = body.get("targets")
+
+    if isinstance(targets, list) and targets:
+        chosen = [str(t) for t in targets][:40]
+    else:
+        chosen = candidate_devices()[:40]
+
+    if not chosen:
+        return jsonify({
+            "ok": False,
+            "error": "No /dev/video* nodes found. The kernel sees no camera.",
+            "results": [],
+        }), 404
+
+    cv2, _ = load_cv2()
+    results = [probe_device(target, cv2) for target in chosen]
+    working = [r["target"] for r in results if r["delivers_frames"]]
+    return jsonify({
+        "ok": True,
+        "results": results,
+        "working": working,
+        "recommended": working[0] if working else None,
+    })
+
+
+@bp.route("/api/camera/stream")
+def api_camera_stream():
+    """MJPEG stream for the dashboard live view.
+
+    Streams ``multipart/x-mixed-replace``. Returns 503 with a JSON body
+    when no working camera is available, so the frontend can show the
+    reason instead of a broken image.
+    """
+    cam = _camera()
+    if cam is None:
+        return jsonify({"ok": False, "error": "No camera backend was initialized."}), 503
+
+    status = _camera_status()
+    if not status.get("configured"):
+        return jsonify({
+            "ok": False,
+            "error": status.get("error") or status.get("message") or "Camera not available.",
+        }), 503
+
+    boundary = "veggiecareframe"
+    stream = cam.stream()
+
+    def generate():
+        for frame in stream:
+            header = (
+                f"--{boundary}\r\n"
+                f"Content-Type: image/jpeg\r\n"
+                f"Content-Length: {len(frame)}\r\n"
+                f"\r\n"
+            ).encode()
+            yield header + frame + b"\r\n"
+        yield f"--{boundary}--\r\n".encode()
+
+    return Response(
+        generate(),
+        mimetype=f"multipart/x-mixed-replace; boundary={boundary}",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"},
+    )
+
+
+@bp.route("/api/camera/snapshot")
+def api_camera_snapshot():
+    """A single JPEG frame."""
+    cam = _camera()
+    if cam is None:
+        return jsonify({"ok": False, "error": "No camera backend was initialized."}), 503
+
+    status = _camera_status()
+    if not status.get("configured"):
+        return jsonify({
+            "ok": False,
+            "error": status.get("error") or status.get("message") or "Camera not available.",
+        }), 503
+
+    import tempfile
+    from pathlib import Path as _Path
+
+    tmp_dir = tempfile.mkdtemp(prefix="veggiecare-snap-")
+    try:
+        path = cam.capture(save_path=_Path(tmp_dir) / "snapshot.jpg")
+        if not path:
+            return jsonify({"ok": False, "error": "Failed to capture a frame."}), 500
+        data = _Path(path).read_bytes()
+    finally:
+        for leftover in _Path(tmp_dir).glob("*"):
+            try:
+                leftover.unlink()
+            except OSError:
+                pass
+        try:
+            _Path(tmp_dir).rmdir()
+        except OSError:
+            pass
+
+    return Response(
+        data,
+        mimetype="image/jpeg",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 # ======================================================================

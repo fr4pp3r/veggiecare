@@ -424,6 +424,63 @@ a:hover { color: var(--accent-hover); }
 .save-bar .card-actions { justify-content: space-between; align-items: center; }
 #restart-card .restart-desc { margin: 0; padding: 0.875rem 1rem 0; font-size: 0.8125rem; color: var(--fg-muted); }
 
+/* ------------------------------------------------------------------
+   Camera page
+   ------------------------------------------------------------------ */
+.badge-ok { background: rgba(63,185,80,0.2); color: var(--success); border: 1px solid var(--success); }
+.badge-bad { background: rgba(248,81,73,0.2); color: var(--danger); border: 1px solid var(--danger); }
+.nav-tab-link { text-decoration: none; }
+
+.camera-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  padding: 1rem;
+  background: #000;
+  border-bottom: 1px solid var(--border);
+}
+.camera-stream {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  border-radius: 6px;
+  background: #000;
+}
+.camera-error { max-width: 46rem; padding: 0.5rem 0.25rem; text-align: center; }
+.camera-error-title { margin: 0 0 0.5rem; font-size: 1rem; font-weight: 600; color: var(--danger); }
+.camera-error-reason { margin: 0; font-size: 0.875rem; color: var(--fg); line-height: 1.5; }
+.camera-controls { align-items: center; }
+.camera-grid { margin-top: 1rem; }
+
+.cam-devices { padding: 0.75rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.cam-device {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 0.5rem 0.625rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.cam-device-path { font-family: monospace; font-size: 0.8125rem; color: var(--fg); }
+.cam-device-name { font-size: 0.8125rem; color: var(--fg); }
+.cam-device-meta { font-size: 0.75rem; color: var(--fg-muted); }
+.cam-empty { margin: 0; font-size: 0.8125rem; color: var(--fg-muted); line-height: 1.5; }
+.camera-hint {
+  display: block;
+  margin: 0;
+  padding: 0 1rem 1rem;
+  line-height: 1.6;
+}
+.camera-hint code, .cam-empty code {
+  padding: 0.05rem 0.3rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
 /* Responsive */
 @media (max-width: 480px) {
   .header { flex-direction: column; gap: 0.5rem; text-align: center; }

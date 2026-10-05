@@ -10,6 +10,7 @@ a relay that could switch on by accident).
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,9 @@ DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "config.yaml"
 
 _LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
 _DETECTOR_MODES = ("none", "random", "sequential")
+
+# A real V4L2 node always carries an index; bare "/dev/video" cannot exist.
+_VIDEO_NODE_RE = re.compile(r"^/dev/video\d+$")
 
 
 class ConfigError(Exception):
@@ -34,13 +38,21 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
-def _field(cfg: dict, key: str, expected: type, errors: list[str], path: str) -> Any:
+def _type_names(expected) -> str:
+    if isinstance(expected, tuple):
+        return " or ".join(t.__name__ for t in expected)
+    return expected.__name__
+
+
+def _field(cfg: dict, key: str, expected, errors: list[str], path: str) -> Any:
     if key not in cfg:
         errors.append(f"{path}.{key}: missing")
         return None
     value = cfg[key]
     if not isinstance(value, expected):
-        errors.append(f"{path}.{key}: must be {expected.__name__}, got {type(value).__name__}")
+        errors.append(
+            f"{path}.{key}: must be {_type_names(expected)}, got {type(value).__name__}"
+        )
         return None
     return value
 
@@ -227,6 +239,32 @@ def _validate_camera(section: dict, errors: list[str]) -> None:
     _bool(section, "enabled", errors, path)
     _number(section, "capture_interval_seconds", errors, path, minimum=1)
     _str(section, "image_dir", errors, path)
+
+    # Reject serial ports explicitly: /dev/ttyUSB* is the NPK RS485 adapter
+    # and operators have tried to point the camera at it.
+    if "device_path" in section and section["device_path"] is not None:
+        device_path = section["device_path"]
+        if not isinstance(device_path, str):
+            errors.append(f"{path}.device_path must be a string")
+        elif device_path.strip():
+            value = device_path.strip()
+            if value.lower() == "auto":
+                pass
+            elif value.startswith("/dev/tty"):
+                errors.append(
+                    f"{path}.device_path '{value}' is a serial port. A USB webcam is "
+                    f"a V4L2 device like /dev/video0 — /dev/ttyUSB* is the NPK "
+                    f"sensor's RS485 adapter."
+                )
+            elif not _VIDEO_NODE_RE.match(value):
+                errors.append(
+                    f"{path}.device_path must be 'auto' or a V4L2 camera node such as "
+                    f"/dev/video0 (got '{value}')"
+                )
+
+    _number(section, "width", errors, path, minimum=1)
+    _number(section, "height", errors, path, minimum=1)
+    _number(section, "fps", errors, path, minimum=1)
 
 
 def validate(cfg: dict) -> None:

@@ -141,8 +141,14 @@ def main() -> int:
         try:
             if cam_type == "usb":
                 from camera.usb_camera import UsbCamera
+                # An empty device_path means "fall back to device_index".
+                device_path = str(camera_cfg.get("device_path") or "").strip() or None
                 camera = UsbCamera(
                     device_index=int(camera_cfg.get("device_index", 0)),
+                    device_path=device_path,
+                    width=camera_cfg.get("width"),
+                    height=camera_cfg.get("height"),
+                    fps=camera_cfg.get("fps"),
                     image_dir=camera_cfg.get("image_dir", "data/images"),
                     simulate=simulate,
                 )
@@ -157,7 +163,27 @@ def main() -> int:
         from camera.camera import NotConfiguredCamera
         camera = NotConfiguredCamera()
     controller.attach_camera(camera)
-    state.update_camera(configured=getattr(camera, "status", lambda: {"configured": False})()["configured"], error=None)
+
+    cam_status = camera.status() if hasattr(camera, "status") else {"configured": False}
+    state.update_camera(
+        configured=bool(cam_status.get("configured", False)),
+        name=cam_status.get("name"),
+        device_path=cam_status.get("device_path"),
+        resolution=(
+            f"{cam_status['width']}x{cam_status['height']}"
+            if cam_status.get("width") and cam_status.get("height")
+            else None
+        ),
+        simulated=bool(cam_status.get("simulated", False)),
+        error=cam_status.get("error"),
+    )
+    if cam_status.get("configured"):
+        log.info("Camera ready: %s", cam_status.get("message", cam_status.get("name")))
+    else:
+        log.warning(
+            "Camera not available: %s",
+            cam_status.get("error") or cam_status.get("message") or "unknown reason",
+        )
 
     pest_cfg = cfg.get("pest_detection", {})
     if pest_cfg.get("enabled"):
@@ -224,6 +250,7 @@ def main() -> int:
         config=cfg,
         controller=controller,
         db=db,
+        camera=camera,
         config_path=config_file_path(args.config),
     )
 

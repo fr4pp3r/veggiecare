@@ -140,13 +140,32 @@ pest_detection:
       confidence_max: 0.98
 
 # ------------------------------------------------------------------
-# Camera - not installed yet. Interface exists so PiCamera 3 can be
-# added later without touching the rest of the system.
+# Camera - USB webcam.
+#
+# A webcam is a V4L2 video device: /dev/video0, /dev/video1, ...
+# It is NEVER /dev/ttyUSB0 — that is the NPK sensor's RS485/FTDI
+# serial adapter (see the npk section above).
+#
+# device_path accepts three things:
+#   auto       probe every /dev/video* node and use the first that
+#              actually delivers frames (recommended; see below)
+#   /dev/videoN  pin one specific node
+#   ''         fall back to device_index
+#
+# Prefer 'auto' on a Pi 5: the libcamera/pipewire stack registers many
+# nodes (video19-video35 and friends) that open successfully but are
+# metadata-only and never produce an image, so guessing a fixed index
+# or path is unreliable. To pin a node instead, use "Find my camera" on
+# the /camera page and copy the node it reports.
 # ------------------------------------------------------------------
 camera:
   enabled: true
   type: usb  # use USB webcam
-  device_index: 0
+  device_path: auto        # 'auto', '/dev/videoN', or '' for device_index
+  device_index: 0            # fallback when device_path is empty
+  width: 640                 # requested; the driver may ignore this
+  height: 480
+  fps: 15
   capture_interval_seconds: 300
   image_dir: data/images
 # ------------------------------------------------------------------

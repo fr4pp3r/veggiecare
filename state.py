@@ -76,6 +76,10 @@ class SystemState:
         # Camera state
         self.camera: dict[str, Any] = {
             "configured": False,
+            "name": None,
+            "device_path": None,
+            "resolution": None,
+            "simulated": False,
             "error": None,
             "last_capture": None,
         }

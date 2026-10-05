@@ -19,6 +19,13 @@ lgpio>=1.6
 # Comment-preserving YAML round-trip for the dashboard Settings page
 ruamel.yaml>=0.18
 
+# OpenCV — REQUIRED for the USB camera (capture + MJPEG live view).
+# Without it `import cv2` fails inside camera/usb_camera.py, the camera
+# silently degrades to simulated frames, and the dashboard reports the
+# working webcam as "Not installed".
+# Use the headless build on the Pi: no GUI libs, much smaller.
+opencv-python-headless>=4.10.0
+
 # Raspberry Pi only (Linux/ARM): required for the soil moisture sensor
 # (MCP3008 over SPI). If pip cannot build spidev on the Pi, install via:
 #   sudo apt install python3-spidev
@@ -28,8 +35,4 @@ spidev>=3.6
 # Development / testing only
 # ------------------------------------------------------------------
 pytest>=8.0
-# opencv-python>=4.10.0  # Use opencv-python-headless on RPi to save space
 ultralytics>=8.3.0
-
-# Optional: use headless OpenCV on RPi to save space
-# opencv-python-headless>=4.10.0

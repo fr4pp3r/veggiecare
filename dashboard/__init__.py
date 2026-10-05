@@ -17,6 +17,7 @@ def create_app(
     config: dict[str, Any],
     controller: Any = None,
     db: Any = None,
+    camera: Any = None,
     config_path: str | Path | None = None,
 ) -> Flask:
     """Build and configure the Flask application."""
@@ -32,6 +33,9 @@ def create_app(
     app.veggiecare_config = config  # type: ignore[attr-defined]
     app.veggiecare_controller = controller  # type: ignore[attr-defined]
     app.veggiecare_db = db  # type: ignore[attr-defined]
+    # Camera backend, used by the live-view routes. None means the
+    # dashboard was built without one (tests, or a failed startup).
+    app.veggiecare_camera = camera  # type: ignore[attr-defined]
 
     # Config file the Settings page reads from and saves to. Defaults to
     # the same resolution used by load_config (CLI/env/default).

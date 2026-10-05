@@ -248,7 +248,9 @@
 
   function renderPest(pest) {
     if (!pest.enabled || !pest.configured) {
-      els.pestStatus.textContent = 'Not configured / Camera not installed';
+      els.pestStatus.textContent = pest.enabled
+        ? 'Pest detection is not configured yet — no detector model is loaded.'
+        : 'Pest detection is turned off in Settings.';
       els.pestStatus.style.display = 'block';
       els.pestDetails.classList.add('hidden');
       els.pestSimControls.style.display = 'none';
@@ -306,12 +308,20 @@
     // Camera
     els.sysCam.innerHTML = '';
     const cam = data.camera;
+    const camLink = document.createElement('a');
+    camLink.href = '/camera';
+    camLink.className = 'nav-tab-link';
+    camLink.textContent = 'View';
     if (cam.configured) {
       els.sysCam.appendChild(statusDot(!cam.error));
       els.sysCam.append(cam.error ? ` Error: ${cam.error}` : ' Connected');
+      els.sysCam.append(' ');
+      els.sysCam.appendChild(camLink);
     } else {
       els.sysCam.appendChild(statusDot(false));
-      els.sysCam.append(' Not installed');
+      els.sysCam.append(cam.error ? ` Unavailable: ${cam.error}` : ' Not installed');
+      els.sysCam.append(' ');
+      els.sysCam.appendChild(camLink);
     }
 
     // Pest model
