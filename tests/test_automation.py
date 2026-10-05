@@ -14,6 +14,24 @@ from hardware.relay_controller import RelayController
 from state import SystemState
 
 
+def _wait_until(predicate, timeout=5.0, interval=0.02):
+    """Block until predicate() is truthy; return False if timeout elapses.
+
+    The automation controller runs on a background thread, so a fixed
+    `time.sleep(0.3)` followed by an assertion is a race: the thread must be
+    scheduled AND the sensor's read interval must elapse inside that window.
+    Poll the condition instead, keeping a generous ceiling so a real bug still
+    fails loudly rather than hanging.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        if predicate():
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(interval)
+
+
 def _make_config(tmp_path=None):
     db_path = str(tmp_path / "test.db") if tmp_path else "test.db"
     return {
@@ -130,8 +148,10 @@ def test_npk_alert_only_no_auto_relay(automation_setup):
         timestamp=datetime.now(),
         values={"nitrogen": 10, "phosphorus": 25, "potassium": 25},
     )
-    # Wait for tick
-    time.sleep(0.3)
+    # Wait for the controller's next NPK read to fire the transition alert.
+    assert _wait_until(
+        lambda: [a for a in state.snapshot()["alerts"] if a["source"] == "npk"]
+    ), "no NPK alert within timeout"
 
     # Check alert fired
     snap = state.snapshot()
@@ -152,10 +172,9 @@ def test_soil_moisture_auto_waters_when_below_threshold(automation_setup):
         timestamp=datetime.now(),
         values={"moisture": 20},  # below 30
     )
-    time.sleep(0.3)
 
     # Relay 2 should be activated
-    assert relays.is_active(2) is True
+    assert _wait_until(lambda: relays.is_active(2)), "watering never activated relay 2"
     entry = relays.get(2)
     assert entry["trigger"] == "automatic"
 
@@ -214,19 +233,20 @@ def test_watering_cooldown_prevents_retrigger(automation_setup):
         timestamp=datetime.now(),
         values={"moisture": 20},
     )
-    time.sleep(0.3)
-    assert relays.is_active(2) is True
+    assert _wait_until(lambda: relays.is_active(2)), "watering never activated relay 2"
 
-    # Wait for watering to complete (watchdog 2s)
-    time.sleep(2.5)
-    assert relays.is_active(2) is False
+    # Wait for watering to finish (relay 2 runs 2s, then the watchdog clears it)
+    assert _wait_until(lambda: not relays.is_active(2)), "watchdog never turned relay 2 off"
 
-    # Immediately make moisture low again — should NOT re-trigger due to cooldown
+    # Immediately make moisture low again — should NOT re-trigger due to cooldown.
+    # Wait for a *fresh* read: a negative assertion here would otherwise pass
+    # merely because no tick landed, proving nothing about the cooldown.
+    last_read = ctrl._last_moisture_read
     sensors["moisture"].read.return_value = sensors["moisture"].read.return_value.__class__(
         timestamp=datetime.now(),
         values={"moisture": 20},
     )
-    time.sleep(0.3)
+    assert _wait_until(lambda: ctrl._last_moisture_read > last_read), "no fresh moisture read"
     # Still off because of cooldown
     assert relays.is_active(2) is False
 
@@ -277,15 +297,14 @@ def test_pause_resume_automation(automation_setup):
         timestamp=datetime.now(),
         values={"moisture": 20},
     )
-    time.sleep(0.3)
-    assert relays.is_active(2) is True
+    assert _wait_until(lambda: relays.is_active(2)), "watering never activated relay 2"
 
     # Pause
     ctrl.pause()
     assert state.snapshot()["automation"]["paused"] is True
 
-    # Wait for relay watchdog to turn it off (2s)
-    time.sleep(2.5)
+    # Wait for relay watchdog to turn it off
+    assert _wait_until(lambda: not relays.is_active(2)), "watchdog never turned relay 2 off"
     # No new watering should start while paused
     assert relays.is_active(2) is False
 
