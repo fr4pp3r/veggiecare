@@ -10,6 +10,12 @@ minimalmodbus>=2.1
 pyserial>=3.5
 gpiozero>=2.0
 
+# GPIO pin driver — REQUIRED on Linux/ARM. gpiozero>=2.0 ships no backend of
+# its own: without one it warns "Falling back from lgpio/rpigpio/pigpio" and
+# every GpioRelay is marked unavailable (all relays die silently). lgpio is
+# the preferred factory on Pi 5 / kernel 6.x and only needs the `gpio` group.
+lgpio>=1.6
+
 # Comment-preserving YAML round-trip for the dashboard Settings page
 ruamel.yaml>=0.18
 
