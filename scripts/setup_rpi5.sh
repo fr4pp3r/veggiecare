@@ -3,6 +3,16 @@ set -euo pipefail
 
 echo "=== VeggieCare RPi5 Full Installation ==="
 
+# --- Pre-flight Check ---
+REQUIRED_GB=5
+AVAILABLE_KB=$(df / --output=avail | tail -1)
+AVAILABLE_GB=$((AVAILABLE_KB / 1024 / 1024))
+
+if [ "$AVAILABLE_GB" -lt "$REQUIRED_GB" ]; then
+  echo "ERROR: Insufficient disk space. Need at least ${REQUIRED_GB}GB, but only ${AVAILABLE_GB}GB available."
+  exit 1
+fi
+
 if [ -f "scripts/setup_rpi5_deps.sh" ]; then
   bash scripts/setup_rpi5_deps.sh
 fi
@@ -17,10 +27,16 @@ fi
 
 sudo usermod -a -G gpio,dialout,spi,i2c $SERVICE_USER 2>/dev/null || true
 
-if [ ! -d "$VEGGIECARE_DIR" ]; then
-  echo "--- Copying project to $VEGGIECARE_DIR ---"
+if [ "$(pwd)" = "$VEGGIECARE_DIR" ]; then
+  echo "--- Local setup detected: Running in target directory. Skipping file movement. ---"
+elif [ ! -d "$VEGGIECARE_DIR" ]; then
+  echo "--- Copying project to $VEGGIECARE_DIR (excluding heavy data) ---"
   sudo mkdir -p /home/veggiecare
-  sudo cp -r "$(pwd)" "$VEGGIECARE_DIR"
+  # Use rsync to avoid duplicating large datasets/weights and existing venvs
+  sudo rsync -av --exclude='runs' --exclude='Pest-Data' --exclude='.venv' --exclude='data' --exclude='logs' "$(pwd)/" "$VEGGIECARE_DIR/"
+else
+  echo "--- Project already exists at $VEGGIECARE_DIR. Ensuring content is synced... ---"
+  sudo rsync -av --exclude='runs' --exclude='Pest-Data' --exclude='.venv' --exclude='data' --exclude='logs' "$(pwd)/" "$VEGGIECARE_DIR/"
 fi
 
 echo "--- Creating data/logs directories ---"
@@ -29,16 +45,9 @@ sudo mkdir -p "$VEGGIECARE_DIR/data" "$VEGGIECARE_DIR/logs" "$VEGGIECARE_DIR/tmp
 echo "--- Setting ownership ---"
 sudo chown -R $SERVICE_USER:$SERVICE_USER /home/veggiecare/veggiecare
 
-echo "--- Checking disk space ---"
-df -h / /tmp /var/tmp /home 2>/dev/null || true
-
 echo "--- Cleaning pip/cache to free space ---"
 pip3 cache purge 2>/dev/null || true
 sudo rm -rf /root/.cache/pip /tmp/pip-* /var/tmp/pip-* 2>/dev/null || true
-
-echo "--- Increasing /tmp size for this session (if needed) ---"
-sudo mount -o remount,size=3G /tmp 2>/dev/null || true
-df -h /tmp 2>/dev/null || true
 
 echo "--- Setting up Python virtual environment ---"
 sudo -u $SERVICE_USER bash -c '

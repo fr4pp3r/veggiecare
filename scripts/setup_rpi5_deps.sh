@@ -32,8 +32,7 @@ sudo apt-get install -y --no-install-recommends \
   libwebp-dev \
   zlib1g-dev \
   libopenblas-dev \
-  liblapack-dev \
-  libatlas-base-dev
+  liblapack-dev
 
 echo "--- Installing FFmpeg/video libraries ---"
 sudo apt-get install -y --no-install-recommends \

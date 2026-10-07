@@ -38,15 +38,40 @@ python app.py --simulate
 # http://localhost:5000
 ```
 
-## Raspberry Pi 5 Setup
+## Raspberry Pi 5 Setup with `scripts/setup_rpi5.sh`
 
-### Before you start
+### Quick Deploy (One-Command)
+```bash
+# From your workstation, clone and transfer to the Pi
+git clone https://github.com/yourusername/veggiecare.git veggiecare
+rsync -a --exclude .venv --exclude .venv-test --exclude .git --exclude runs --exclude Pest-Data \
+      ./ veggiecare@<pi-ip>:/home/veggiecare/veggiecare/
 
+# SSH into the Pi
+ssh veggiecare@<pi-ip>
+cd veggiecare
+
+# Run the automated setup script (handles deps, venv, systemd, configs)
+./scripts/setup_rpi5.sh
+```
+
+**What the script does:**
+- Checks for 5+ GB free space (prevents SD card corruption)
+- Installs system dependencies
+- Creates `data/` and `logs/` directories with proper ownership
+- Sets up Python virtual environment
+- Installs system service (`sudo systemctl start veggiecare`)
+- Prints access URL and commands for future use
+
+### Manual Install
+If you prefer to manage the setup yourself, follow these steps:
+
+#### Before you start
 | Requirement | Notes |
 |-------------|-------|
 | Raspberry Pi 5 | 4 GB+ recommended |
 | Raspberry Pi OS | Bookworm, 64-bit, freshly imaged |
-| Storage | 32 GB+ SD card or USB SSD, **6 GB free minimum** |
+| Storage | 32 GB+ SD card or USB SSD, **6+ GB free minimum** (downloaded weights can take additional space) |
 | Power | Official 5 V/5 A USB-C supply |
 | Network | SSH access to the Pi |
 
@@ -69,17 +94,24 @@ sudo reboot
 
 ### 2. Copy the project
 
-The repo tracks `runs/` (~97 MB of trained weights) and `Pest-Data/` (~70 MB of
-training images). Copy the weights; skip `Pest-Data/` unless you plan to retrain.
+Two common workflows:
 
+#### Option A: On the Raspberry Pi (Recommended for maintenance)
+Clone directly into the service directory. This allows you to run `git pull` from that location:
+```bash
+cd /home/veggiecare
+git clone https://github.com/yourusername/veggiecare.git veggiecare
+```
+
+#### Option B: From your workstation (First-time deployment)
+Copy the code but **exclude** heavy directories to avoid duplicating data:
 ```bash
 # from your workstation
-rsync -a --exclude .venv --exclude .venv-test --exclude .git \
+rsync -a --exclude .venv --exclude .venv-test --exclude .git --exclude runs --exclude Pest-Data \
       ./ veggiecare@<pi-ip>:/home/veggiecare/veggiecare/
 ```
 
-If you `git clone` directly on the Pi instead, clone into `/home/veggiecare/veggiecare`
-so the paths in `deploy/veggiecare.service` resolve.
+> **Why exclude `runs/` and `Pest-Data/`?** The repo ships with trained weights (`runs/`) and training images (`Pest-Data/`). Without exclusions, this can consume 100+ MB of disk space during deployment. These directories should only be on the Pi if you're actively using or training the model.
 
 ### 3. Install dependencies
 
