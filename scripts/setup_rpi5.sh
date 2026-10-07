@@ -33,10 +33,12 @@ elif [ ! -d "$VEGGIECARE_DIR" ]; then
   echo "--- Copying project to $VEGGIECARE_DIR (excluding heavy data) ---"
   sudo mkdir -p /home/veggiecare
   # Use rsync to avoid duplicating large datasets/weights and existing venvs
-  sudo rsync -av --exclude='runs' --exclude='Pest-Data' --exclude='.venv' --exclude='data' --exclude='logs' "$(pwd)/" "$VEGGIECARE_DIR/"
+  # -c adds checksum checks to detect corrupted files during transfer
+  sudo rsync -avc --exclude='runs' --exclude='Pest-Data' --exclude='.venv' --exclude='data' --exclude='logs' "$(pwd)/" "$VEGGIECARE_DIR/"
 else
   echo "--- Project already exists at $VEGGIECARE_DIR. Ensuring content is synced... ---"
-  sudo rsync -av --exclude='runs' --exclude='Pest-Data' --exclude='.venv' --exclude='data' --exclude='logs' "$(pwd)/" "$VEGGIECARE_DIR/"
+  # -c adds checksum checks to detect corrupted files during transfer
+  sudo rsync -avc --exclude='runs' --exclude='Pest-Data' --exclude='.venv' --exclude='data' --exclude='logs' "$(pwd)/" "$VEGGIECARE_DIR/"
 fi
 
 echo "--- Creating data/logs directories ---"
@@ -45,9 +47,11 @@ sudo mkdir -p "$VEGGIECARE_DIR/data" "$VEGGIECARE_DIR/logs" "$VEGGIECARE_DIR/tmp
 echo "--- Setting ownership ---"
 sudo chown -R $SERVICE_USER:$SERVICE_USER /home/veggiecare/veggiecare
 
-echo "--- Cleaning pip/cache to free space ---"
+echo "--- Cleaning pip/cache to clear corrupted files ---"
 pip3 cache purge 2>/dev/null || true
 sudo rm -rf /root/.cache/pip /tmp/pip-* /var/tmp/pip-* 2>/dev/null || true
+# Also clear any temp wheel dirs that may contain bad wheels
+sudo rm -rf /tmp/*.whl 2>/dev/null || true
 
 echo "--- Setting up Python virtual environment ---"
 sudo -u $SERVICE_USER bash -c '

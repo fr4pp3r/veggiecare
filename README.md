@@ -123,6 +123,14 @@ chmod +x scripts/setup_rpi5.sh scripts/setup_rpi5_deps.sh
 ./scripts/setup_rpi5.sh
 ```
 
+> **If you see `zlib.error: Error -3 while decompressing data`:** This indicates corrupted package files in the download cache. Run this recovery command before re-running the script:
+> ```bash
+> pip cache purge
+> rm -rf /tmp/*.whl
+> ./scripts/setup_rpi5.sh
+> ```
+> This ensures a fresh download of the packages without recycled bad files.
+
 The script:
 
 - installs system build deps (build-essential, cmake, swig, gfortran, python3-dev, libjpeg/libpng/libtiff, openblas/lapack, FFmpeg and crypto/ffi/HDF5 headers, `libv4l-dev`, i2c/spi tools)
