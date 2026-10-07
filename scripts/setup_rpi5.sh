@@ -88,6 +88,16 @@ sudo mkdir -p "$VEGGIECARE_DIR/data" "$VEGGIECARE_DIR/logs" "$VEGGIECARE_DIR/tmp
 echo "--- Setting ownership ---"
 sudo chown -R $SERVICE_USER:$SERVICE_USER /home/veggiecare/veggiecare
 
+# Add swap for 2GB Pi to prevent OOM during pip installs
+if [ "$(free -m | awk '/^Mem:/{print $2}')" -lt 3000 ]; then
+  echo "--- Low memory detected: Creating 2GB swap file ---"
+  sudo fallocate -l 2G /swapfile 2>/dev/null || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048
+  sudo chmod 600 /swapfile
+  sudo mkswap /swapfile
+  sudo swapon /swapfile
+  echo "/swapfile none swap sw 0 0" | sudo tee -a /etc/fstab >/dev/null
+fi
+
 echo "--- Cleaning pip/cache to clear corrupted files ---"
 pip3 cache purge 2>/dev/null || true
 sudo rm -rf /root/.cache/pip /tmp/pip-* /var/tmp/pip-* 2>/dev/null || true
@@ -95,16 +105,21 @@ sudo rm -rf /root/.cache/pip /tmp/pip-* /var/tmp/pip-* 2>/dev/null || true
 sudo rm -rf /tmp/*.whl 2>/dev/null || true
 
 echo "--- Setting up Python virtual environment ---"
+# Use piwheels for verified ARM wheels (avoids corrupted PyPI wheels)
+# Limit parallelism for 2GB RAM Pi
 sudo -u $SERVICE_USER bash -c '
   set -euo pipefail
   cd '"$VEGGIECARE_DIR"'
   export TMPDIR='"$VEGGIECARE_DIR"'/tmp
   export PIP_CACHE_DIR='"$VEGGIECARE_DIR"'/.pip-cache
   export PIP_NO_CACHE_DIR=1
+  # piwheels: official pre-built ARM wheels, verified checksums
+  export PIP_EXTRA_INDEX_URL="https://www.piwheels.org/simple"
   python3 -m venv .venv
   source .venv/bin/activate
   pip install --upgrade pip wheel setuptools --no-cache-dir --prefer-binary
-  pip install -r requirements.txt --no-cache-dir --prefer-binary
+  # Single-threaded install to avoid OOM on 2GB Pi
+  PIP_NO_BUILD_ISOLATION=0 pip install -r requirements.txt --no-cache-dir --prefer-binary -v
   pip install --no-deps "ultralytics>=8.4.0" --no-cache-dir
 '
 

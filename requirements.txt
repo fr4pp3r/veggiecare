@@ -58,7 +58,10 @@ ruamel.yaml>=0.18
 # This must stay the ONLY OpenCV in this file. The GUI build
 # (opencv-python, an ultralytics dependency) installs into the same cv2/
 # directory and needs libGL.so.1, which a headless Pi usually lacks.
-opencv-python-headless>=4.10.0
+#
+# PINNED to 4.10.0.84: OpenCV 5.x wheels (5.0.0.93) have verified CRC corruption
+# on PyPI for aarch64. piwheels provides verified ARM builds for 4.x.
+opencv-python-headless==4.10.0.84
 
 # Raspberry Pi only (Linux/ARM): required for the soil moisture sensor
 # (MCP3008 over SPI). If pip cannot build spidev on the Pi, install via:

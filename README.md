@@ -298,5 +298,32 @@ the misleading "Camera not installed".
 | systemd `status=217/USER` | The OS user is not named `veggiecare`. |
 | systemd `226/NAMESPACE` | `data/` or `logs/` missing — see `ReadWritePaths` in the unit file. |
 | Relays all unavailable | `lgpio` is not installed. Without a GPIO backend every `GpioRelay` is marked unavailable and fails silently. |
+| `zipfile.BadZipFile: Bad CRC-32 for file 'opencv_python_headless-5.0.0.93...'` | **Corrupted PyPI wheel for OpenCV 5.x on ARM.** Fixed by pinning to `opencv-python-headless==4.10.0.84` in requirements.txt and using piwheels (verified ARM builds). Re-run `./scripts/setup_rpi5.sh`. |
+| OOM / freeze during `pip install` on 2GB Pi | Script now auto-creates 2GB swap. If still fails: `sudo fallocate -l 2G /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile`. |
+
+## Low-Memory (2GB Pi 5) Notes
+
+## Low-Memory (2GB Pi 5) Notes
+
+The automated script now handles 2GB Pi automatically:
+- **Auto-creates 2GB swap file** if RAM < 3GB (prevents OOM during pip installs)
+- **Uses piwheels** (`https://www.piwheels.org/simple`) for pre-built, verified ARM wheels — no compilation needed
+- **Single-threaded pip installs** (`PIP_NO_BUILD_ISOLATION=0`) to limit memory spikes
+- **Pinned OpenCV 4.10.0.84** — avoids corrupted OpenCV 5.x wheels on PyPI
+
+If you still hit memory issues:
+```bash
+# Check swap is active
+free -h
+
+# Manually create larger swap if needed (4GB)
+sudo swapoff /swapfile
+sudo fallocate -l 4G /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+
+# Monitor memory during install
+watch -n 1 free -h
+```
 
 ## Configuration

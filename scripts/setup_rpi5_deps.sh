@@ -32,7 +32,8 @@ sudo apt-get install -y --no-install-recommends \
   libwebp-dev \
   zlib1g-dev \
   libopenblas-dev \
-  liblapack-dev
+  liblapack-dev \
+  python3-opencv
 
 echo "--- Installing FFmpeg/video libraries ---"
 sudo apt-get install -y --no-install-recommends \
