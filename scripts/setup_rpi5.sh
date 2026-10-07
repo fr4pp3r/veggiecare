@@ -3,8 +3,49 @@ set -euo pipefail
 
 echo "=== VeggieCare RPi5 Full Installation ==="
 
+# --- Hardware Health Checks ---
+echo "--- Checking hardware health ---"
+# Check for kernel I/O errors (sign of failing SD card / power issues)
+DMESG_IO_ERRORS=$(dmesg -T | grep -i -e "error" -e "fail" -e "i/o" -e "mmc" -e "sd " | tail -5)
+if [ -n "$DMESG_IO_ERRORS" ]; then
+  echo "WARNING: Kernel I/O errors detected:"
+  echo "$DMESG_IO_ERRORS"
+  echo "This often indicates a failing SD card or insufficient power supply."
+  read -p "Continue anyway? (y/N): " -n 1 -r
+  echo
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    exit 1
+  fi
+fi
+
+# Check throttling (under-voltage / thermal)
+VCGENCMD_OUT=$(vcgencmd get_throttled 2>/dev/null || echo "throttled=0x0")
+THROTTLED=$(echo "$VCGENCMD_OUT" | cut -d= -f2)
+if [ "$THROTTLED" != "0x0" ] && [ "$THROTTLED" != "0x50000" ]; then
+  echo "WARNING: System throttling detected: $VCGENCMD_OUT"
+  echo "  0x50000 = under-voltage has occurred since boot"
+  echo "  0x50005 = throttled + under-voltage"
+  echo "This indicates power supply issues. Use official 5V/5A USB-C PSU."
+  read -p "Continue anyway? (y/N): " -n 1 -r
+  echo
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    exit 1
+  fi
+fi
+
+# Check filesystem integrity
+echo "--- Checking filesystem integrity ---"
+if ! sudo fsck -n / 2>&1 | grep -q "clean"; then
+  echo "WARNING: Root filesystem may have errors. Run 'sudo fsck -f /' on next boot."
+  read -p "Continue anyway? (y/N): " -n 1 -r
+  echo
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    exit 1
+  fi
+fi
+
 # --- Pre-flight Check ---
-REQUIRED_GB=5
+REQUIRED_GB=6
 AVAILABLE_KB=$(df / --output=avail | tail -1)
 AVAILABLE_GB=$((AVAILABLE_KB / 1024 / 1024))
 
