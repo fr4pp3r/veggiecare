@@ -133,6 +133,10 @@ def main() -> int:
         config=cfg, db=db, relays=relays, state=state, sensors=sensors,
     )
 
+    # Attach stepper to controller for system test
+    if stepper:
+        controller.attach_stepper(stepper)
+
     # 7. Pest detection and camera
     camera_cfg = cfg.get("camera", {})
     camera = None

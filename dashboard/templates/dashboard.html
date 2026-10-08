@@ -128,6 +128,21 @@
           <button id="btn-resume" class="btn btn-primary hidden">Resume Automation</button>
         </div>
       </section>
+
+      <section id="system-test" class="card">
+        <header class="card-header"><h2>System Test</h2></header>
+        <p class="hint">Run a full diagnostic test of all hardware modules. This will briefly activate each relay, read sensors, capture a camera frame, and move the stepper motor.</p>
+        <div class="test-options">
+          <label><input type="checkbox" id="test-relays" checked> Relays</label>
+          <label><input type="checkbox" id="test-sensors" checked> Sensors (NPK, Moisture)</label>
+          <label><input type="checkbox" id="test-camera" checked> Camera</label>
+          <label><input type="checkbox" id="test-stepper" checked> Stepper</label>
+        </div>
+        <div class="card-actions">
+          <button id="btn-system-test" class="btn btn-primary" type="button">Run System Test</button>
+        </div>
+        <div id="system-test-results" class="test-results hidden" role="region" aria-live="polite"></div>
+      </section>
       </div>
     </div>
 

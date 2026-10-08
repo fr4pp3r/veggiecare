@@ -61,7 +61,8 @@ class AutomationController:
         self._npk_sensor = sensors.get("npk") if sensors else None
         self._moisture_sensor = sensors.get("moisture") if sensors else None
         self._detector = None  # set via attach_detector()
-        self._camera = None  # set via attach_camera()
+        self._camera = None    # set via attach_camera()
+        self._stepper = None   # set via attach_stepper()
 
         # Internal bookkeeping
         self._stop = threading.Event()
@@ -100,6 +101,9 @@ class AutomationController:
 
     def attach_camera(self, camera: Any) -> None:
         self._camera = camera
+
+    def attach_stepper(self, stepper: Any) -> None:
+        self._stepper = stepper
 
     # ------------------------------------------------------------------
     # lifecycle

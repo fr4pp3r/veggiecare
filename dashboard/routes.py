@@ -361,6 +361,173 @@ def api_pest_simulate():
 
 
 # ======================================================================
+# JSON API — system test (diagnostics)
+# ======================================================================
+
+def _run_relay_test(ctrl, relay_id: int, duration: float = 2.0) -> dict:
+    """Test a single relay activation."""
+    try:
+        ok, msg = ctrl.activate_relay(
+            relay_id, duration=duration, trigger="manual", source="system_test"
+        )
+        if not ok:
+            return {"relay_id": relay_id, "ok": False, "message": msg}
+        # Wait for watchdog to turn it off
+        time.sleep(min(duration + 0.5, 5.0))
+        still_on = ctrl._relays.is_active(relay_id)
+        return {
+            "relay_id": relay_id,
+            "ok": True,
+            "message": f"Relay {relay_id} activated and auto-off confirmed" if not still_on else f"Relay {relay_id} activated (watchdog will clear)",
+        }
+    except Exception as exc:
+        return {"relay_id": relay_id, "ok": False, "message": f"Error: {exc}"}
+
+
+def _run_sensor_tests(ctrl) -> dict:
+    """Test NPK and soil moisture sensors."""
+    results = {}
+    # Test NPK
+    try:
+        npk_sensor = ctrl._npk_sensor
+        if npk_sensor:
+            reading = npk_sensor.read()
+            results["npk"] = {
+                "ok": True,
+                "message": f"N={reading.values.get('nitrogen', '?')} P={reading.values.get('phosphorus', '?')} K={reading.values.get('potassium', '?')}",
+                "values": reading.values,
+            }
+        else:
+            results["npk"] = {"ok": False, "message": "NPK sensor not initialized"}
+    except Exception as exc:
+        results["npk"] = {"ok": False, "message": f"Error: {exc}"}
+
+    # Test soil moisture
+    try:
+        moisture_sensor = ctrl._moisture_sensor
+        if moisture_sensor:
+            reading = moisture_sensor.read()
+            results["moisture"] = {
+                "ok": True,
+                "message": f"Moisture: {reading.values.get('moisture', '?')}%",
+                "values": reading.values,
+            }
+        else:
+            results["moisture"] = {"ok": False, "message": "Moisture sensor not initialized"}
+    except Exception as exc:
+        results["moisture"] = {"ok": False, "message": f"Error: {exc}"}
+
+    return results
+
+
+def _run_camera_test(ctrl) -> dict:
+    """Test camera capture."""
+    try:
+        camera = ctrl._camera
+        if camera:
+            status = camera.status()
+            if status.get("configured"):
+                # Try a capture
+                import tempfile
+                from pathlib import Path
+                tmp_dir = tempfile.mkdtemp(prefix="veggiecare-systest-")
+                try:
+                    path = camera.capture(save_path=Path(tmp_dir) / "test.jpg")
+                    if path and Path(path).exists():
+                        size = Path(path).stat().st_size
+                        return {
+                            "ok": True,
+                            "message": f"Captured {size} bytes",
+                            "status": status,
+                        }
+                    else:
+                        return {"ok": False, "message": "Capture returned no file", "status": status}
+                finally:
+                    import shutil
+                    try:
+                        shutil.rmtree(tmp_dir, ignore_errors=True)
+                    except Exception:
+                        pass
+            else:
+                return {"ok": False, "message": f"Camera not configured: {status.get('message', 'unknown')}", "status": status}
+        else:
+            return {"ok": False, "message": "Camera not initialized"}
+    except Exception as exc:
+        return {"ok": False, "message": f"Error: {exc}"}
+
+
+def _run_stepper_test(ctrl) -> dict:
+    """Test stepper motor movement."""
+    try:
+        stepper = ctrl._stepper
+        if stepper:
+            stepper.step(steps=10, delay=0.001, clockwise=True)
+            stepper.step(steps=10, delay=0.001, clockwise=False)
+            stepper.off()
+            return {"ok": True, "message": "Stepper moved forward and back (simulated)"}
+        else:
+            return {"ok": False, "message": "Stepper not initialized"}
+    except Exception as exc:
+        return {"ok": False, "message": f"Error: {exc}"}
+
+
+@bp.route("/api/system/test", methods=["POST"])
+def api_system_test():
+    """Run a full system test: relays, sensors, camera, stepper."""
+    ctrl = _controller()
+    if ctrl is None:
+        return jsonify({"ok": False, "error": "Controller not ready"}), 503
+
+    body = request.get_json(silent=True) or {}
+    # Which tests to run (default: all)
+    test_relays = body.get("relays", True)
+    test_sensors = body.get("sensors", True)
+    test_camera = body.get("camera", True)
+    test_stepper = body.get("stepper", True)
+
+    results = {
+        "ok": True,
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "tests": {},
+    }
+
+    # Test relays
+    if test_relays:
+        relay_results = []
+        for rid in (1, 2, 3):
+            r = _run_relay_test(ctrl, rid)
+            relay_results.append(r)
+            if not r.get("ok"):
+                results["ok"] = False
+        results["tests"]["relays"] = relay_results
+
+    # Test sensors
+    if test_sensors:
+        sensor_results = _run_sensor_tests(ctrl)
+        results["tests"]["sensors"] = sensor_results
+        if not sensor_results.get("npk", {}).get("ok"):
+            results["ok"] = False
+        if not sensor_results.get("moisture", {}).get("ok"):
+            results["ok"] = False
+
+    # Test camera
+    if test_camera:
+        camera_result = _run_camera_test(ctrl)
+        results["tests"]["camera"] = camera_result
+        if not camera_result.get("ok"):
+            results["ok"] = False
+
+    # Test stepper
+    if test_stepper:
+        stepper_result = _run_stepper_test(ctrl)
+        results["tests"]["stepper"] = stepper_result
+        if not stepper_result.get("ok"):
+            results["ok"] = False
+
+    return jsonify(results)
+
+
+# ======================================================================
 # JSON API — history
 # ======================================================================
 
