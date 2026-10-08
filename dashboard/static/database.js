@@ -33,7 +33,7 @@
   }
 
   function escapeHtml(s) {
-    return s.replace(/[&<>"']/g, c => ({ '&': '&', '<': '<', '>': '>', '"': '"', "'": ''' }[c]));
+    return s.replace(/[&<>"']/g, c => ({ '&': '&', '<': '<', '>': '>', '"': '"', "'": '\u2019' }[c]));
   }
 
   async function loadTables() {
