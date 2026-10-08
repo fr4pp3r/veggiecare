@@ -613,6 +613,47 @@ def api_detections():
 
 
 # ======================================================================
+# JSON API — database export
+# ======================================================================
+
+@bp.route("/api/database/export")
+def api_database_export():
+    """Export all database tables as JSON."""
+    db = getattr(current_app, "veggiecare_db", None)
+    if db is None:
+        return jsonify({"ok": False, "error": "Database not available"}), 503
+    try:
+        data = db.export_all_tables()
+        return jsonify({"ok": True, "data": data})
+    except Exception as exc:
+        log.exception("Database export failed")
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@bp.route("/api/database/tables")
+def api_database_tables():
+    """List all database table names."""
+    db = getattr(current_app, "veggiecare_db", None)
+    if db is None:
+        return jsonify({"ok": False, "error": "Database not available"}), 503
+    try:
+        tables = db.get_table_names()
+        return jsonify({"ok": True, "tables": tables})
+    except Exception as exc:
+        log.exception("Database tables list failed")
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+# ======================================================================
+# Page routes - Database
+# ======================================================================
+
+@bp.route("/database")
+def database_page():
+    return render_template("database.html")
+
+
+# ======================================================================
 # JSON API — settings (dashboard config page)
 # ======================================================================
 

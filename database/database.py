@@ -337,3 +337,29 @@ class Database:
                 pass
 
     # Export helpers
+
+    def export_all_tables(self) -> dict[str, list[dict]]:
+        """Export all tables as a dictionary of table names to row lists."""
+        tables = [
+            "npk_readings",
+            "moisture_readings",
+            "relay_activations",
+            "blocked_activations",
+            "pest_detections",
+            "npk_recommendations",
+            "system_events",
+            "config_changes",
+        ]
+        result: dict[str, list[dict]] = {}
+        for table in tables:
+            try:
+                rows = self._query(f"SELECT * FROM {table} ORDER BY id DESC")
+                result[table] = [dict(r) for r in rows]
+            except DatabaseError:
+                result[table] = []
+        return result
+
+    def get_table_names(self) -> list[str]:
+        """Get all table names in the database."""
+        rows = self._query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+        return [r["name"] for r in rows]

@@ -587,3 +587,29 @@ a:hover { color: var(--accent-hover); }
 .test-running { text-align: center; color: var(--fg-muted); font-style: italic; }
 .test-success { text-align: center; color: var(--success); }
 .test-error { text-align: center; color: var(--danger); }
+
+/* Database page */
+.status-success { color: var(--success); }
+.status-error { color: var(--danger); }
+.table-list-wrap { display: flex; flex-direction: column; gap: 0.5rem; }
+.table-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.625rem 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.table-name { font-family: monospace; font-size: 0.875rem; color: var(--fg); }
+.table-badge {
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--bg-hover);
+  color: var(--fg-muted);
+  border: 1px solid var(--border);
+}

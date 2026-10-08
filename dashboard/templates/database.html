@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VeggieCare Database</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="header">
+    <h1>VeggieCare</h1>
+    <div class="header-meta">
+      <span>Database</span>
+      <a class="btn btn-ghost btn-sm" href="/">&larr; Dashboard</a>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <header class="card-header">
+        <h2>Database Export</h2>
+      </header>
+      <p class="hint">Download a complete JSON export of all database tables. This includes sensor readings, relay activations, pest detections, recommendations, system events, and configuration changes.</p>
+      <div class="card-actions">
+        <button id="btn-export-json" class="btn btn-primary" type="button">Download JSON Export</button>
+        <button id="btn-refresh-db" class="btn btn-secondary" type="button">Refresh Table List</button>
+      </div>
+      <div id="export-status" class="hidden"></div>
+    </section>
+
+    <section class="card">
+      <header class="card-header">
+        <h2>Tables</h2>
+      </header>
+      <div id="table-list" class="table-list">
+        <p class="log-empty">Loading…</p>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/database.js"></script>
+</body>
+</html>
