@@ -471,6 +471,37 @@ def _run_stepper_test(ctrl) -> dict:
         return {"ok": False, "message": f"Error: {exc}"}
 
 
+@bp.route("/api/stepper/test", methods=["POST"])
+def api_stepper_test():
+    """Test stepper motor movement (forward + back)."""
+    ctrl = _controller()
+    if ctrl is None:
+        return jsonify({"ok": False, "error": "Controller not ready"}), 503
+
+    body = request.get_json(silent=True) or {}
+    steps = body.get("steps", 512)
+    delay = body.get("delay", 0.003)
+
+    try:
+        stepper = ctrl._stepper
+        if not stepper:
+            return jsonify({"ok": False, "error": "Stepper not initialized"}), 503
+
+        stepper.step(steps=steps, delay=delay, clockwise=True)
+        time.sleep(0.5)
+        stepper.step(steps=steps, delay=delay, clockwise=False)
+        stepper.off()
+
+        return jsonify({
+            "ok": True,
+            "message": f"Stepper moved {steps} steps forward and back",
+            "steps": steps,
+            "delay": delay,
+        })
+    except Exception as exc:
+        return jsonify({"ok": False, "error": f"Error: {exc}"}), 500
+
+
 @bp.route("/api/system/test", methods=["POST"])
 def api_system_test():
     """Run a full system test: relays, sensors, camera, stepper."""

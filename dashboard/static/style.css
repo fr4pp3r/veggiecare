@@ -529,3 +529,23 @@ a:hover { color: var(--accent-hover); }
 .test-name { font-weight: 600; font-size: 0.8125rem; min-width: 80px; }
 .test-msg { font-size: 0.8125rem; color: var(--fg); flex: 1; }
 .test-error { text-align: center; color: var(--danger); padding: 1rem; }
+
+/* Stepper Test */
+.stepper-test-controls .test-options label {
+  margin-right: 1rem;
+}
+.stepper-test-controls input[type="number"] {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8125rem;
+  width: 80px;
+}
+.test-result { padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.8125rem; }
+.test-result.success { background: rgba(63,185,80,0.15); color: var(--success); border: 1px solid var(--success); }
+.test-result.error { background: rgba(248,81,73,0.15); color: var(--danger); border: 1px solid var(--danger); }
+.test-running { text-align: center; color: var(--fg-muted); font-style: italic; }
+.test-success { text-align: center; color: var(--success); }
+.test-error { text-align: center; color: var(--danger); }

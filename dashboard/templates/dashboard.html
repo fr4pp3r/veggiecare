@@ -141,6 +141,19 @@
         <div class="card-actions">
           <button id="btn-system-test" class="btn btn-primary" type="button">Run System Test</button>
         </div>
+
+        <h3 style="margin: 1rem 1rem 0.5rem; font-size: 0.875rem;">Quick Stepper Test</h3>
+        <div class="stepper-test-controls" style="padding: 0 1rem 1rem;">
+          <div class="test-options" style="margin-bottom: 0.5rem;">
+            <label>Steps: <input type="number" id="stepper-steps" value="512" min="1" max="2048" step="64" style="width: 80px; margin-left: 0.5rem;"></label>
+            <label>Delay (s): <input type="number" id="stepper-delay" value="0.003" min="0.001" max="0.01" step="0.001" style="width: 80px; margin-left: 0.5rem;"></label>
+          </div>
+          <div class="card-actions">
+            <button id="btn-stepper-test" class="btn btn-secondary" type="button">Test Stepper (Forward + Back)</button>
+          </div>
+          <div id="stepper-test-result" class="test-result hidden" role="region" aria-live="polite" style="margin-top: 0.5rem;"></div>
+        </div>
+
         <div id="system-test-results" class="test-results hidden" role="region" aria-live="polite"></div>
       </section>
       </div>

@@ -115,13 +115,16 @@ class SimulatedRelay(BaseRelay):
 class RelayController:
     """Manages three relays with a hard watchdog for auto-off."""
 
-    def __init__(self, cfg: dict[str, Any], simulate: bool = False):
+    def __init__(self, cfg: dict[str, Any], simulate: bool = False, on_watchdog_off: callable | None = None):
         self._active_high = bool(cfg.get("active_high", True))
         self._watchdog_cap = float(cfg["auto_off_watchdog_seconds"])
         self._default_duration = float(cfg.get("default_duration_seconds", 60))
         self._watchdog_step = float(cfg.get("watchdog_check_seconds", 1.0))
         if self._watchdog_step <= 0:
             self._watchdog_step = 1.0
+
+        # Optional callback when watchdog turns off a relay: fn(relay_id, relay_name)
+        self._on_watchdog_off = on_watchdog_off
 
         # {relay_id: {"relay": BaseRelay, "deadline": float|None, "duration": float}}
         self._relays: dict[int, dict[str, Any]] = {}
@@ -247,13 +250,21 @@ class RelayController:
             with self._lock:
                 for entry in self._relays.values():
                     if entry["deadline"] is not None and now >= entry["deadline"]:
+                        relay_id = entry["relay"].relay_id
+                        relay_name = entry["relay"].name
                         entry["relay"].off()
                         entry["deadline"] = None
                         entry["activated_at"] = None
                         entry["trigger"] = None
                         logger.info(
-                            "Watchdog turned relay %s OFF", entry["relay"].name,
+                            "Watchdog turned relay %s OFF", relay_name,
                         )
+                        # Notify callback (e.g., to update SystemState)
+                        if self._on_watchdog_off:
+                            try:
+                                self._on_watchdog_off(relay_id, relay_name)
+                            except Exception as exc:
+                                logger.error("Watchdog callback failed: %s", exc)
             self._stop.wait(timeout=self._watchdog_step)
 
     # ------------------------------------------------------------------

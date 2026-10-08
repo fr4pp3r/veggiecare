@@ -114,7 +114,11 @@ def main() -> int:
         log.error("Could not create soil moisture sensor: %s", exc)
 
     from hardware.relay_controller import RelayController
-    relays = RelayController(cfg["relays"], simulate=simulate)
+    relays = RelayController(
+        cfg["relays"],
+        simulate=simulate,
+        on_watchdog_off=lambda rid, name: state.set_relay(rid, state="off"),
+    )
 
     # Stepper motor for camera movement
     stepper = None
