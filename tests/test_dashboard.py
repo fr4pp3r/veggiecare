@@ -232,9 +232,14 @@ def test_api_config_schema(test_app):
     assert data["pending"] is None
 
     groups = {g["id"]: g for g in data["groups"]}
-    assert set(groups) == {"watering", "fertilizer", "pest", "safety", "system", "npk_recommendations"}
+    assert set(groups) == {"watering", "fertilizer", "pest", "safety", "relays", "system", "npk_recommendations"}
     fields = {f["key"]: f for g in data["groups"] for f in g["fields"]}
     assert fields["soil_moisture.enabled"]["type"] == "toggle"
+    # Per-relay pump run times
+    assert fields["relays.items.1.activation_duration_seconds"]["type"] == "slider"
+    assert fields["relays.items.1.activation_duration_seconds"]["min"] == 5
+    assert fields["relays.items.1.activation_duration_seconds"]["max"] == 600
+    assert "relays.default_duration_seconds" not in fields
     assert fields["soil_moisture.threshold"]["value"] == 30
     assert fields["soil_moisture.threshold"]["min"] == 0
     assert fields["soil_moisture.threshold"]["max"] == 100
@@ -271,6 +276,26 @@ def test_api_settings_save(test_app, tmp_path):
     cfg = resp.get_json()
     assert cfg["dirty"] is True
     assert cfg["pending"] is not None
+
+
+def test_api_settings_save_relay_duration(test_app, tmp_path):
+    client = test_app.test_client()
+    path = tmp_path / "test_config.yaml"
+
+    resp = client.post(
+        "/api/settings",
+        json={"settings": {"relays.items.1.activation_duration_seconds": 60}},
+    )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["ok"] is True
+    assert "Watering pump (Relay 2)" in data["changed"]
+
+    with open(path, "r", encoding="utf-8") as fh:
+        saved = yaml.safe_load(fh)
+    assert saved["relays"]["items"][1]["activation_duration_seconds"] == 60
+    # Other relays are untouched.
+    assert saved["relays"]["items"][0]["activation_duration_seconds"] == 120
 
 
 def test_api_settings_out_of_range(test_app):

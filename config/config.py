@@ -467,10 +467,19 @@ def save_user_config(config_path: str | Path, updates: dict[str, Any]) -> None:
         target = data
         parts = dotted.split(".")
         for part in parts[:-1]:
-            if not isinstance(target.get(part), dict):
-                target[part] = {}
-            target = target[part]
-        target[parts[-1]] = value
+            key = int(part) if part.lstrip("-").isdigit() else part
+            if isinstance(target, list):
+                if not isinstance(key, int) or not (0 <= key < len(target)):
+                    raise ConfigError(
+                        f"Cannot save {dotted!r}: invalid list index {part!r}",
+                    )
+                target = target[key]
+            else:
+                if not isinstance(target.get(key), (dict, list)):
+                    target[key] = {}
+                target = target[key]
+        last = parts[-1]
+        target[int(last) if last.lstrip("-").isdigit() else last] = value
 
     tmp_path = path.with_suffix(path.suffix + ".tmp")
     with open(tmp_path, "w", encoding="utf-8") as fh:

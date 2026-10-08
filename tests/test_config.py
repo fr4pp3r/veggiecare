@@ -149,3 +149,30 @@ def test_camera_rejects_non_numeric_dimensions(temp_config):
     with pytest.raises(ConfigError) as exc:
         load_config(temp_config)
     assert "width" in str(exc.value)
+
+
+# ----------------------------------------------------------------------
+# save_user_config — dotted paths into list items
+# ----------------------------------------------------------------------
+
+def test_save_user_config_updates_list_item(tmp_path):
+    import yaml
+    from config import save_user_config
+
+    path = tmp_path / "cfg.yaml"
+    path.write_text(
+        "relays:\n"
+        "  items:\n"
+        "    - id: 1\n"
+        "      activation_duration_seconds: 120\n"
+        "    - id: 2\n"
+        "      activation_duration_seconds: 120\n",
+        encoding="utf-8",
+    )
+
+    save_user_config(path, {"relays.items.1.activation_duration_seconds": 60})
+
+    with open(path, "r", encoding="utf-8") as fh:
+        saved = yaml.safe_load(fh)
+    assert saved["relays"]["items"][1]["activation_duration_seconds"] == 60
+    assert saved["relays"]["items"][0]["activation_duration_seconds"] == 120

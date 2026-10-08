@@ -6,6 +6,7 @@ live state that the frontend JavaScript polls for updates.
 
 from __future__ import annotations
 
+import copy
 import logging
 import os
 import signal
@@ -19,7 +20,6 @@ from flask import Blueprint, Response, current_app, jsonify, render_template, re
 from config import (
     ConfigError,
     config_file_path,
-    deep_merge,
     load_config,
     save_user_config,
     validate,
@@ -653,7 +653,7 @@ def api_settings_save():
 
             path = _config_path()
             base = load_config(path)
-            working = deep_merge({}, base)
+            working = copy.deepcopy(base)
             for key, value in normalized.items():
                 set_path(working, key, value)
             try:

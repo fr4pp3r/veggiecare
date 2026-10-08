@@ -146,18 +146,39 @@ SETTINGS_GROUPS: list[dict[str, Any]] = [
         "description": "Protection so pumps are never left running by accident.",
         "fields": [
             {
-                "key": "relays.default_duration_seconds",
-                "label": "Relay activation duration",
-                "description": "How long each relay stays active when triggered. Applies to all relays unless overridden per-relay in the config file.",
-                "type": "slider",
-                "min": 5, "max": 600, "step": 5, "unit": "sec", "factor": 1, "integer": True,
-            },
-            {
                 "key": "relays.auto_off_watchdog_seconds",
                 "label": "Automatic pump shut-off",
                 "description": "If any pump stays on longer than this, the system switches it off automatically. Protects the pumps even if something goes wrong.",
                 "type": "slider",
                 "min": 30, "max": 600, "step": 30, "unit": "sec", "factor": 1, "integer": True,
+            },
+        ],
+    },
+    {
+        "id": "relays",
+        "title": "Pump run times",
+        "description": "How long each pump stays on when it runs.",
+        "fields": [
+            {
+                "key": "relays.items.0.activation_duration_seconds",
+                "label": "Fertilizer pump (Relay 1)",
+                "description": "How long the fertilizer pump stays on each time you start it.",
+                "type": "slider",
+                "min": 5, "max": 600, "step": 5, "unit": "sec", "factor": 1, "integer": True,
+            },
+            {
+                "key": "relays.items.1.activation_duration_seconds",
+                "label": "Watering pump (Relay 2)",
+                "description": "How long the watering pump runs each time the soil gets too dry.",
+                "type": "slider",
+                "min": 5, "max": 600, "step": 5, "unit": "sec", "factor": 1, "integer": True,
+            },
+            {
+                "key": "relays.items.2.activation_duration_seconds",
+                "label": "Pest sprayer (Relay 3)",
+                "description": "How long the pest sprayer runs for each pest response.",
+                "type": "slider",
+                "min": 5, "max": 600, "step": 5, "unit": "sec", "factor": 1, "integer": True,
             },
         ],
     },
@@ -196,25 +217,52 @@ def _field_by_key(key: str) -> dict[str, Any] | None:
     return None
 
 
+def _key(part: str) -> Any:
+    """A dotted segment addresses a list element when it is all digits."""
+    return int(part) if part.lstrip("-").isdigit() else part
+
+
 def read_path(cfg: dict, dotted: str) -> Any:
-    """Read a dotted config path (e.g. ``npk.thresholds.nitrogen``)."""
+    """Read a dotted config path (e.g. ``npk.thresholds.nitrogen``).
+
+    Integer segments address list elements, e.g.
+    ``relays.items.1.activation_duration_seconds``.
+    """
     node: Any = cfg
     for part in dotted.split("."):
-        if not isinstance(node, dict) or part not in node:
+        key = _key(part)
+        if isinstance(node, list):
+            if not isinstance(key, int) or not (0 <= key < len(node)):
+                return None
+            node = node[key]
+        elif isinstance(node, dict):
+            if key not in node:
+                return None
+            node = node[key]
+        else:
             return None
-        node = node[part]
     return node
 
 
 def set_path(cfg: dict, dotted: str, value: Any) -> None:
-    """Set a dotted config path, creating missing intermediate dicts."""
-    node = cfg
+    """Set a dotted config path, creating missing intermediate dicts.
+
+    Integer segments address list elements, e.g.
+    ``relays.items.1.activation_duration_seconds``.
+    """
+    node: Any = cfg
     parts = dotted.split(".")
     for part in parts[:-1]:
-        if not isinstance(node.get(part), dict):
-            node[part] = {}
-        node = node[part]
-    node[parts[-1]] = value
+        key = _key(part)
+        if isinstance(node, list):
+            if not isinstance(key, int) or not (0 <= key < len(node)):
+                raise KeyError(f"{dotted}: invalid list index {part!r}")
+            node = node[key]
+        else:
+            if not isinstance(node.get(key), (dict, list)):
+                node[key] = {}
+            node = node[key]
+    node[_key(parts[-1])] = value
 
 
 def get_config_payload(cfg: dict) -> dict[str, Any]:
