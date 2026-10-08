@@ -806,6 +806,66 @@
     } catch (e) { addAlert('error', 'Dashboard', e.message); }
   }
 
+  async function runSystemTest() {
+    const btn = els.btnSystemTest;
+    const resultsDiv = document.getElementById('system-test-results');
+    if (!btn || !resultsDiv) return;
+
+    // Get selected test options
+    const options = {
+      relays: document.getElementById('test-relays')?.checked ?? true,
+      sensors: document.getElementById('test-sensors')?.checked ?? true,
+      camera: document.getElementById('test-camera')?.checked ?? true,
+      stepper: document.getElementById('test-stepper')?.checked ?? true,
+    };
+
+    // UI state
+    btn.disabled = true;
+    btn.textContent = 'Running Test...';
+    resultsDiv.classList.remove('hidden');
+    resultsDiv.innerHTML = '<p class="test-running">Running system test... this may take up to 30 seconds.</p>';
+
+    try {
+      const res = await postJson(`${API}/system/test`, options);
+      resultsDiv.innerHTML = renderTestResults(res);
+    } catch (e) {
+      resultsDiv.innerHTML = `<p class="test-error">Test failed: ${escapeHtml(e.message)}</p>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Run System Test';
+    }
+  }
+
+  function renderTestResults(data) {
+    if (!data) return '<p class="test-error">No results returned.</p>';
+
+    let html = `<div class="test-summary ${data.ok ? 'success' : 'failure'}">
+      <strong>Overall: ${data.ok ? 'PASSED' : 'FAILED'}</strong>
+      <span class="test-time">${data.timestamp || ''}</span>
+    </div>`;
+
+    const tests = data.tests || {};
+    for (const [category, results] of Object.entries(tests)) {
+      if (!results) continue;
+      const items = Array.isArray(results) ? results : [results];
+      html += `<div class="test-category"><h4>${category.charAt(0).toUpperCase() + category.slice(1)}</h4><ul>`;
+      for (const r of items) {
+        if (!r) continue;
+        const ok = r.ok === true;
+        const relayId = r.relay_id ? ` Relay ${r.relay_id}` : '';
+        const msg = escapeHtml(r.message || 'No message');
+        html += `<li class="${ok ? 'test-pass' : 'test-fail'}">
+          <span class="test-icon">${ok ? '✓' : '✗'}</span>
+          <span class="test-name">${relayId ? relayId + ':' : ''}</span>
+          <span class="test-msg">${msg}</span>
+        </li>`;
+      }
+      html += '</ul></div>';
+    }
+
+    return html;
+  }
+
   async function runStepperTest() {
     const btn = els.btnStepperTest;
     const resultDiv = els.stepperTestResult;
