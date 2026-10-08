@@ -143,6 +143,133 @@ pest_detection:
       confidence_max: 0.98
 
 # ------------------------------------------------------------------
+# NPK-based fertilizer recommendations.
+# Generates fertilizer suggestions from soil NPK readings.
+# Uses a rule-based engine (zero ML, negligible RAM) by default.
+# ML engines: 'sklearn' (joblib), 'onnx' (ONNX Runtime)
+# ------------------------------------------------------------------
+npk_recommendations:
+  enabled: true
+  # Engine: rule_engine | sklearn | onnx | mock
+  engine: rule_engine
+  # Model path for ML engines (relative to repo root)
+  model_path: models/fertilizer_rf.joblib
+  # Crop type determines target NPK ranges. Options: tomato, pepper, lettuce, cucumber, custom
+  crop_type: tomato
+  # Growth stage: seedling, vegetative, flowering, fruiting
+  growth_stage: vegetative
+  # Target NPK ranges per crop and stage (mg/kg). Adjust for your specific varieties.
+  targets:
+    tomato:
+      seedling:
+        nitrogen: [50, 80]
+        phosphorus: [30, 50]
+        potassium: [40, 70]
+      vegetative:
+        nitrogen: [100, 150]
+        phosphorus: [40, 60]
+        potassium: [80, 120]
+      flowering:
+        nitrogen: [80, 120]
+        phosphorus: [50, 80]
+        potassium: [100, 150]
+      fruiting:
+        nitrogen: [60, 100]
+        phosphorus: [40, 70]
+        potassium: [120, 180]
+    pepper:
+      seedling:
+        nitrogen: [40, 70]
+        phosphorus: [30, 50]
+        potassium: [40, 70]
+      vegetative:
+        nitrogen: [80, 120]
+        phosphorus: [40, 60]
+        potassium: [80, 120]
+      flowering:
+        nitrogen: [60, 100]
+        phosphorus: [50, 80]
+        potassium: [100, 150]
+      fruiting:
+        nitrogen: [50, 90]
+        phosphorus: [40, 70]
+        potassium: [120, 180]
+    lettuce:
+      seedling:
+        nitrogen: [60, 100]
+        phosphorus: [30, 50]
+        potassium: [50, 80]
+      vegetative:
+        nitrogen: [120, 180]
+        phosphorus: [40, 70]
+        potassium: [80, 120]
+      flowering:
+        nitrogen: [80, 130]
+        phosphorus: [40, 60]
+        potassium: [100, 140]
+      fruiting:
+        nitrogen: [60, 100]
+        phosphorus: [30, 50]
+        potassium: [80, 120]
+    cucumber:
+      seedling:
+        nitrogen: [50, 80]
+        phosphorus: [40, 60]
+        potassium: [60, 90]
+      vegetative:
+        nitrogen: [100, 150]
+        phosphorus: [50, 80]
+        potassium: [100, 150]
+      flowering:
+        nitrogen: [80, 120]
+        phosphorus: [60, 90]
+        potassium: [120, 180]
+      fruiting:
+        nitrogen: [60, 100]
+        phosphorus: [50, 80]
+        potassium: [150, 220]
+
+  # Fertilizer recipes available to the recommender.
+  # Each recipe: id, name, n_p_k (ratio percentages), dosage_g_per_10L, suitable_for (stages)
+  fertilizers:
+    - id: balanced_20_20_20
+      name: "Balanced 20-20-20"
+      n_p_k: [20, 20, 20]
+      dosage_g_per_10L: 10
+      suitable_for: ["seedling", "vegetative", "flowering", "fruiting"]
+    - id: high_n_30_10_10
+      name: "High Nitrogen 30-10-10"
+      n_p_k: [30, 10, 10]
+      dosage_g_per_10L: 5
+      suitable_for: ["vegetative"]
+    - id: high_p_10_30_10
+      name: "High Phosphorus 10-30-10"
+      n_p_k: [10, 30, 10]
+      dosage_g_per_10L: 6
+      suitable_for: ["seedling", "flowering"]
+    - id: high_k_10_10_30
+      name: "High Potassium 10-10-30"
+      n_p_k: [10, 10, 30]
+      dosage_g_per_10L: 8
+      suitable_for: ["flowering", "fruiting"]
+    - id: tomato_feed_4_6_8
+      name: "Tomato Feed 4-6-8"
+      n_p_k: [4, 6, 8]
+      dosage_g_per_10L: 20
+      suitable_for: ["flowering", "fruiting"]
+
+  # Mock settings for testing (when detector is set to mock)
+  mock:
+    # none       -> never recommends anything
+    # random     -> random recommendations using settings below
+    # sequential -> cycles through `sequence` (deterministic, used by tests)
+    mode: random
+    sequence:
+      - [true, "balanced_20_20_20", 10.0, "medium"]
+      - [false, null, null, null]
+    recommend_probability: 0.5
+
+# ------------------------------------------------------------------
 # Camera - USB webcam.
 #
 # A webcam is a V4L2 video device: /dev/video0, /dev/video1, ...

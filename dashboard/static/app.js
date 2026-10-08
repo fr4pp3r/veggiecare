@@ -17,6 +17,17 @@
     btnR1: n('btn-relay1'),
     r1Dur: n('r1-dur'),
     npkMeta: n('npk-meta'),
+    // Recommendation
+    recStatus: n('rec-status'),
+    recPriority: n('rec-priority'),
+    recModel: n('rec-model'),
+    recFertilizerName: n('rec-fertilizer-name'),
+    recDosage: n('rec-dosage'),
+    recReasoning: n('rec-reasoning'),
+    recDeficits: n('rec-deficits'),
+    recDur: n('rec-dur'),
+    recMeta: n('rec-meta'),
+    btnApplyFertilizer: n('btn-apply-fertilizer'),
     moistVal: n('moist-val'),
     moistBar: n('moist-bar'),
     moistThLine: n('moist-th-line'),
@@ -223,6 +234,9 @@
     // Automation
     renderAutomation(data.automation);
 
+    // Recommendation
+    renderRecommendation(data.recommendation);
+
     // Alerts
     renderAlerts(data.alerts);
   }
@@ -362,6 +376,66 @@
     } else {
       els.btnPause.classList.add('hidden');
       els.btnResume.classList.add('hidden');
+    }
+  }
+
+  function renderRecommendation(rec) {
+    if (!els.recStatus) return;
+
+    const activeDiv = els.recStatus.querySelector('.rec-active');
+    const emptyDiv = els.recStatus.querySelector('.rec-empty');
+
+    if (!rec || !rec.recommended) {
+      if (activeDiv) activeDiv.classList.add('hidden');
+      if (emptyDiv) emptyDiv.classList.remove('hidden');
+      return;
+    }
+
+    if (emptyDiv) emptyDiv.classList.add('hidden');
+    if (activeDiv) activeDiv.classList.remove('hidden');
+
+    // Priority badge
+    if (els.recPriority) {
+      els.recPriority.textContent = rec.priority ? rec.priority.toUpperCase() : '—';
+      els.recPriority.className = 'rec-priority ' + (rec.priority || '');
+    }
+    // Model
+    if (els.recModel) {
+      els.recModel.textContent = rec.model ? `(${rec.model})` : '';
+    }
+    // Fertilizer name
+    if (els.recFertilizerName) {
+      els.recFertilizerName.textContent = rec.fertilizer_name || '—';
+    }
+    // Dosage
+    if (els.recDosage) {
+      els.recDosage.textContent = rec.dosage_g_per_10L != null ? rec.dosage_g_per_10L.toFixed(1) : '—';
+    }
+    // Reasoning
+    if (els.recReasoning) {
+      els.recReasoning.textContent = rec.reasoning || '—';
+    }
+    // Deficits
+    if (els.recDeficits && rec.deficits) {
+      const deficitItems = Object.entries(rec.deficits)
+        .filter(([, v]) => v !== 0)
+        .map(([k, v]) => {
+          const label = k.charAt(0).toUpperCase() + k.slice(1);
+          const sign = v > 0 ? '↓' : '↑';
+          return `<span class="deficit-item ${v > 0 ? 'low' : 'high'}">${sign} ${label}: ${Math.abs(v).toFixed(1)}%</span>`;
+        });
+      els.recDeficits.innerHTML = deficitItems.length
+        ? `<strong>Deficits:</strong> ${deficitItems.join(' ')}`
+        : '<strong>Deficits:</strong> None';
+    }
+    // Duration
+    if (els.recDur) {
+      const r1 = data?.relays?.find(r => r.id === 1);
+      els.recDur.textContent = r1?.activation_duration_seconds || '—';
+    }
+    // Meta
+    if (els.recMeta) {
+      els.recMeta.textContent = `Generated: ${fmtTime(rec.timestamp)}`;
     }
   }
 
@@ -896,6 +970,7 @@
 
   // Event listeners
   els.btnR1.addEventListener('click', () => activateRelay(1));
+  els.btnApplyFertilizer?.addEventListener('click', () => activateRelay(1));
   els.btnEmergency.addEventListener('click', emergencyStop);
   els.btnPause.addEventListener('click', pauseAutomation);
   els.btnResume.addEventListener('click', resumeAutomation);

@@ -264,6 +264,73 @@ def _validate_camera(section: dict, errors: list[str]) -> None:
     _number(section, "fps", errors, path, minimum=1)
 
 
+def _validate_npk_recommendations(section: dict, errors: list[str]) -> None:
+    path = "npk_recommendations"
+    _bool(section, "enabled", errors, path)
+    _str(section, "crop_type", errors, path)
+    _in(section, "growth_stage", ("seedling", "vegetative", "flowering", "fruiting"), errors, path)
+
+    targets = _field(section, "targets", dict, errors, path)
+    if targets is not None:
+        for crop, stages in targets.items():
+            if not isinstance(stages, dict):
+                errors.append(f"{path}.targets.{crop}: must be a mapping")
+                continue
+            for stage, nutrients in stages.items():
+                if not isinstance(nutrients, dict):
+                    continue
+                for n in ("nitrogen", "phosphorus", "potassium"):
+                    val = nutrients.get(n)
+                    if val is not None:
+                        if not (isinstance(val, (list, tuple)) and len(val) == 2):
+                            errors.append(f"{path}.targets.{crop}.{stage}.{n}: must be [min, max]")
+                        else:
+                            if not all(_is_number(v) and v >= 0 for v in val):
+                                errors.append(f"{path}.targets.{crop}.{stage}.{n}: values must be non-negative numbers")
+                            elif val[0] > val[1]:
+                                errors.append(f"{path}.targets.{crop}.{stage}.{n}: min must be <= max")
+
+    fertilizers = _field(section, "fertilizers", list, errors, path)
+    if fertilizers is not None:
+        for idx, fert in enumerate(fertilizers):
+            fpath = f"{path}.fertilizers[{idx}]"
+            if not isinstance(fert, dict):
+                errors.append(f"{fpath}: must be a mapping")
+                continue
+            _str(fert, "id", errors, fpath)
+            _str(fert, "name", errors, fpath)
+            npk = fert.get("n_p_k")
+            if not (isinstance(npk, (list, tuple)) and len(npk) == 3 and all(_is_number(v) for v in npk)):
+                errors.append(f"{fpath}.n_p_k: must be [N, P, K] numbers")
+            _number(fert, "dosage_g_per_10L", errors, fpath, minimum=0.1)
+            suitable = _field(fert, "suitable_for", list, errors, fpath)
+            if suitable is not None:
+                for stage in suitable:
+                    if stage not in ("seedling", "vegetative", "flowering", "fruiting"):
+                        errors.append(f"{fpath}.suitable_for: invalid stage '{stage}'")
+
+    mock = _field(section, "mock", dict, errors, path)
+    if mock is not None:
+        _in(mock, "mode", _DETECTOR_MODES, errors, f"{path}.mock")
+        sequence = _field(mock, "sequence", list, errors, f"{path}.mock")
+        if sequence is not None:
+            for idx, entry in enumerate(sequence):
+                entry_path = f"{path}.mock.sequence[{idx}]"
+                if not (isinstance(entry, (list, tuple)) and len(entry) == 4):
+                    errors.append(f"{entry_path}: must be [recommended, fertilizer_id, dosage, priority]")
+                    continue
+                recommended, fert_id, dosage, priority = entry
+                if not isinstance(recommended, bool):
+                    errors.append(f"{entry_path}[0]: recommended must be a boolean")
+                if recommended and (not isinstance(fert_id, str) or not fert_id.strip()):
+                    errors.append(f"{entry_path}[1]: fertilizer_id must be a non-empty string when recommended=true")
+                if recommended and dosage is not None and not (_is_number(dosage) and dosage > 0):
+                    errors.append(f"{entry_path}[2]: dosage must be a positive number when recommended=true")
+                if recommended and priority not in ("high", "medium", "low", None):
+                    errors.append(f"{entry_path}[3]: priority must be 'high', 'medium', or 'low' when recommended=true")
+        _number(mock, "recommend_probability", errors, f"{path}.mock", minimum=0, maximum=1)
+
+
 def validate(cfg: dict) -> None:
     """Validate a configuration dict; raise ConfigError with all problems."""
     errors: list[str] = []
@@ -304,6 +371,10 @@ def validate(cfg: dict) -> None:
     camera_cfg = _field(cfg, "camera", dict, errors, "config")
     if camera_cfg is not None:
         _validate_camera(camera_cfg, errors)
+
+    npk_rec_cfg = _field(cfg, "npk_recommendations", dict, errors, "config")
+    if npk_rec_cfg is not None:
+        _validate_npk_recommendations(npk_rec_cfg, errors)
 
     if errors:
         raise ConfigError("Configuration is invalid:\n  - " + "\n  - ".join(errors))

@@ -215,6 +215,36 @@ def main() -> int:
         state.update_pest(configured=False, model=None, error=None)
         log.info("Pest detection disabled")
 
+    # NPK fertilizer recommender
+    rec_cfg = cfg.get("npk_recommendations", {})
+    if rec_cfg.get("enabled"):
+        rec_type = rec_cfg.get("engine", "rule_engine")
+        try:
+            if rec_type == "rule_engine":
+                from recommendations.rule_engine import RuleBasedRecommender
+                recommender = RuleBasedRecommender(cfg)
+            elif rec_type == "sklearn":
+                from recommendations.sklearn_recommender import SklearnRecommender
+                recommender = SklearnRecommender(cfg)
+            elif rec_type == "onnx":
+                from recommendations.onnx_recommender import ONNXRecommender
+                recommender = ONNXRecommender(cfg)
+            elif rec_type == "mock":
+                from recommendations.mock_recommender import MockRecommender
+                recommender = MockRecommender(cfg)
+            else:
+                from recommendations.rule_engine import RuleBasedRecommender
+                recommender = RuleBasedRecommender(cfg)
+        except Exception as exc:
+            log.error("Failed to initialize NPK recommender: %s", exc)
+            from recommendations.rule_engine import RuleBasedRecommender
+            recommender = RuleBasedRecommender(cfg)
+        controller.attach_recommender(recommender)
+        st = recommender.status() if hasattr(recommender, "status") else {"configured": True, "model": recommender.name}
+        log.info("NPK recommender enabled (%s)", st.get("model", "recommender"))
+    else:
+        log.info("NPK recommendations disabled")
+
     controller.start()
 
     # 8. Shutdown safety — relays OFF on exit, no matter how we leave.

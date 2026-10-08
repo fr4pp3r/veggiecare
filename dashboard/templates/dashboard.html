@@ -65,6 +65,30 @@
         <p class="meta" id="npk-meta">Last reading: —</p>
       </section>
 
+      <section id="recommendation" class="card">
+        <header class="card-header"><h2>Fertilizer Recommendation</h2></header>
+        <div id="rec-status" class="rec-status">
+          <div class="rec-empty">No recommendation at this time. All nutrients are within target ranges.</div>
+          <div class="rec-active hidden">
+            <div class="rec-header">
+              <span class="rec-priority" id="rec-priority"></span>
+              <span class="rec-model" id="rec-model"></span>
+            </div>
+            <div class="rec-main">
+              <h3 id="rec-fertilizer-name">—</h3>
+              <p class="rec-dosage">Dosage: <strong id="rec-dosage">—</strong> g per 10L water</p>
+              <p class="rec-reasoning" id="rec-reasoning">—</p>
+            </div>
+            <div class="rec-deficits" id="rec-deficits"></div>
+            <div class="card-actions">
+              <button id="btn-apply-fertilizer" class="btn btn-success" type="button">Apply Fertilizer (Relay 1)</button>
+              <span class="hint">Activates Relay 1 (fertilizer) for <span id="rec-dur">—</span>s</span>
+            </div>
+            <p class="meta" id="rec-meta">Generated: —</p>
+          </div>
+        </div>
+      </section>
+
       <section id="moisture" class="card">
         <header class="card-header"><h2>Soil Moisture</h2></header>
         <div class="sensor-main">

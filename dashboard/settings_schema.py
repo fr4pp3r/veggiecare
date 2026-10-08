@@ -107,6 +107,40 @@ SETTINGS_GROUPS: list[dict[str, Any]] = [
         ],
     },
     {
+        "id": "npk_recommendations",
+        "title": "Fertilizer Recommendations",
+        "description": "Automatic fertilizer suggestions based on soil NPK readings. The system recommends which fertilizer to use and how much, but does not apply it automatically.",
+        "fields": [
+            {
+                "key": "npk_recommendations.enabled",
+                "label": "Fertilizer recommendations",
+                "description": "When on, the system analyzes NPK readings and suggests fertilizer type and dosage.",
+                "type": "toggle",
+            },
+            {
+                "key": "npk_recommendations.crop_type",
+                "label": "Crop type",
+                "description": "The type of crop you are growing. Determines target NPK ranges for each growth stage.",
+                "type": "select",
+                "options": ["tomato", "pepper", "lettuce", "cucumber"],
+            },
+            {
+                "key": "npk_recommendations.growth_stage",
+                "label": "Growth stage",
+                "description": "Current growth stage of the crop. Affects which nutrient ranges and fertilizers are recommended.",
+                "type": "select",
+                "options": ["seedling", "vegetative", "flowering", "fruiting"],
+            },
+            {
+                "key": "npk_recommendations.engine",
+                "label": "Recommendation engine",
+                "description": "The algorithm used for recommendations. 'rule_engine' uses configurable thresholds (zero ML). 'sklearn' uses a trained RandomForest model. 'onnx' uses ONNX Runtime for fast inference. 'mock' is for testing only.",
+                "type": "select",
+                "options": ["rule_engine", "sklearn", "onnx", "mock"],
+            },
+        ],
+    },
+    {
         "id": "safety",
         "title": "Safety",
         "description": "Protection so pumps are never left running by accident.",

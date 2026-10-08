@@ -10,6 +10,7 @@ loop.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 from datetime import datetime
@@ -66,6 +67,22 @@ CREATE TABLE IF NOT EXISTS pest_detections (
     camera      TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_pest_detections_timestamp ON pest_detections(timestamp);
+
+CREATE TABLE IF NOT EXISTS npk_recommendations (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp       TEXT NOT NULL,
+    nitrogen        REAL NOT NULL,
+    phosphorus      REAL NOT NULL,
+    potassium       REAL NOT NULL,
+    fertilizer_id   TEXT,
+    fertilizer_name TEXT,
+    dosage_g_per_10L REAL,
+    deficits        TEXT,  -- JSON string
+    reasoning       TEXT,
+    priority        TEXT,
+    model           TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_npk_rec_timestamp ON npk_recommendations(timestamp);
 
 CREATE TABLE IF NOT EXISTS system_events (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -199,6 +216,23 @@ class Database:
             (timestamp or _now(), int(detected), pest_class, confidence, image_path, model, camera),
         )
 
+    def insert_npk_recommendation(self, nitrogen: float, phosphorus: float, potassium: float,
+                                   fertilizer_id: str | None, fertilizer_name: str | None,
+                                   dosage_g_per_10L: float | None, deficits: dict | None,
+                                   reasoning: str | None, priority: str | None, model: str,
+                                   timestamp: str | None = None) -> None:
+        self._execute(
+            """INSERT INTO npk_recommendations
+               (timestamp, nitrogen, phosphorus, potassium,
+                fertilizer_id, fertilizer_name, dosage_g_per_10L,
+                deficits, reasoning, priority, model)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (timestamp or _now(), nitrogen, phosphorus, potassium,
+             fertilizer_id, fertilizer_name, dosage_g_per_10L,
+             json.dumps(deficits) if deficits else None,
+             reasoning, priority, model),
+        )
+
     def insert_event(self, level: str, source: str, message: str,
                      timestamp: str | None = None) -> None:
         if level not in _LEVELS:
@@ -247,6 +281,16 @@ class Database:
         rows = self._query(
             "SELECT timestamp, detected, pest_class, confidence, image_path, model, camera "
             "FROM pest_detections ORDER BY id DESC LIMIT ?",
+            (limit,),
+        )
+        return [dict(r) for r in rows]
+
+    def recent_npk_recommendations(self, limit: int = 50) -> list[dict]:
+        rows = self._query(
+            """SELECT timestamp, nitrogen, phosphorus, potassium,
+                      fertilizer_id, fertilizer_name, dosage_g_per_10L,
+                      deficits, reasoning, priority, model
+               FROM npk_recommendations ORDER BY id DESC LIMIT ?""",
             (limit,),
         )
         return [dict(r) for r in rows]

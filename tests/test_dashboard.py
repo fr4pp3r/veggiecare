@@ -232,7 +232,7 @@ def test_api_config_schema(test_app):
     assert data["pending"] is None
 
     groups = {g["id"]: g for g in data["groups"]}
-    assert set(groups) == {"watering", "fertilizer", "pest", "safety", "system"}
+    assert set(groups) == {"watering", "fertilizer", "pest", "safety", "system", "npk_recommendations"}
     fields = {f["key"]: f for g in data["groups"] for f in g["fields"]}
     assert fields["soil_moisture.enabled"]["type"] == "toggle"
     assert fields["soil_moisture.threshold"]["value"] == 30
@@ -240,6 +240,14 @@ def test_api_config_schema(test_app):
     assert fields["soil_moisture.threshold"]["max"] == 100
     assert fields["system.timezone"]["type"] == "select"
     assert "Asia/Manila" in fields["system.timezone"]["options"]
+    # NPK recommendations fields
+    assert fields["npk_recommendations.enabled"]["type"] == "toggle"
+    assert fields["npk_recommendations.crop_type"]["type"] == "select"
+    assert "tomato" in fields["npk_recommendations.crop_type"]["options"]
+    assert fields["npk_recommendations.growth_stage"]["type"] == "select"
+    assert "vegetative" in fields["npk_recommendations.growth_stage"]["options"]
+    assert fields["npk_recommendations.engine"]["type"] == "select"
+    assert "rule_engine" in fields["npk_recommendations.engine"]["options"]
 
 
 def test_api_settings_save(test_app, tmp_path):

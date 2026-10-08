@@ -60,9 +60,10 @@ class AutomationController:
         # Injected by app.py after construction (avoids circular import).
         self._npk_sensor = sensors.get("npk") if sensors else None
         self._moisture_sensor = sensors.get("moisture") if sensors else None
-        self._detector = None  # set via attach_detector()
-        self._camera = None    # set via attach_camera()
-        self._stepper = None   # set via attach_stepper()
+        self._detector = None       # set via attach_detector()
+        self._camera = None         # set via attach_camera()
+        self._stepper = None        # set via attach_stepper()
+        self._recommender = None    # set via attach_recommender()
 
         # Internal bookkeeping
         self._stop = threading.Event()
@@ -104,6 +105,9 @@ class AutomationController:
 
     def attach_stepper(self, stepper: Any) -> None:
         self._stepper = stepper
+
+    def attach_recommender(self, recommender: Any) -> None:
+        self._recommender = recommender
 
     # ------------------------------------------------------------------
     # lifecycle
@@ -230,6 +234,46 @@ class AutomationController:
             )
             self._log_event("WARNING", "npk", f"Below threshold: {', '.join(flagged)}")
         self._npk_was_below = any_below
+
+        # NPK-based fertilizer recommendation
+        if self._recommender is not None:
+            try:
+                result = self._recommender.recommend(values)
+                if result.recommended:
+                    self._state.update_recommendation(
+                        recommended=True,
+                        fertilizer_id=result.fertilizer_id,
+                        fertilizer_name=result.fertilizer_name,
+                        dosage_g_per_10L=result.dosage_g_per_10L,
+                        deficits=result.deficits,
+                        reasoning=result.reasoning,
+                        priority=result.priority,
+                        timestamp=result.timestamp.isoformat(timespec="seconds"),
+                        model=result.model,
+                    )
+                    # Persist recommendation
+                    self._db.insert_npk_recommendation(
+                        nitrogen=values.get("nitrogen", 0),
+                        phosphorus=values.get("phosphorus", 0),
+                        potassium=values.get("potassium", 0),
+                        fertilizer_id=result.fertilizer_id,
+                        fertilizer_name=result.fertilizer_name,
+                        dosage_g_per_10L=result.dosage_g_per_10L,
+                        deficits=result.deficits,
+                        reasoning=result.reasoning,
+                        priority=result.priority,
+                        model=result.model,
+                        timestamp=ts,
+                    )
+                    self._log_event("INFO", "npk_recommendation",
+                        f"Recommended {result.fertilizer_name} @ {result.dosage_g_per_10L}g/10L "
+                        f"({result.reasoning})")
+                else:
+                    # Clear recommendation when all nutrients in range
+                    self._state.update_recommendation(recommended=False)
+            except Exception as exc:
+                logger.error("NPK recommendation failed: %s", exc)
+                self._state.update_recommendation(recommended=False, error=str(exc))
 
     # ------------------------------------------------------------------
     # Moisture reading + watering rule

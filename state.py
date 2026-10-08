@@ -93,6 +93,19 @@ class SystemState:
             "limit_reached": False,
         }
 
+        # NPK fertilizer recommendation state
+        self.recommendation: dict[str, Any] = {
+            "recommended": False,
+            "fertilizer_id": None,
+            "fertilizer_name": None,
+            "dosage_g_per_10L": None,
+            "deficits": {},
+            "reasoning": None,
+            "priority": None,
+            "timestamp": None,
+            "model": None,
+        }
+
         self.db: dict[str, Any] = {"ok": True, "error": None, "last_write": None}
         self.automation: dict[str, Any] = {"running": False, "paused": False}
         self._alerts: deque = deque(maxlen=30)
@@ -174,6 +187,10 @@ class SystemState:
             if last_write is not None:
                 self.db["last_write"] = last_write
 
+    def update_recommendation(self, **fields: Any) -> None:
+        with self._lock:
+            self.recommendation.update(fields)
+
     def set_automation(self, running: bool | None = None, paused: bool | None = None) -> None:
         with self._lock:
             if running is not None:
@@ -218,4 +235,5 @@ class SystemState:
                 "db": dict(self.db),
                 "automation": dict(self.automation),
                 "alerts": list(self._alerts),
+                "recommendation": dict(self.recommendation),
             }
