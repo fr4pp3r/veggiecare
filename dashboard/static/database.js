@@ -27,7 +27,7 @@
   }
 
   function fmtTime(iso) {
-    if (!iso) return '—';
+    if (!iso) return '\u2014';
     const d = new Date(iso);
     return d.toLocaleString([], { dateStyle: 'short', timeStyle: 'medium' });
   }
@@ -37,7 +37,7 @@
   }
 
   async function loadTables() {
-    els.tableList.innerHTML = '<p class="log-empty">Loading…</p>';
+    els.tableList.innerHTML = '<p class="log-empty">Loading\u2026</p>';
     try {
       const data = await fetchJson(`${API}/database/tables`);
       if (!data.ok) throw new Error(data.error || 'Failed to load tables');
@@ -68,7 +68,7 @@
   async function exportDatabase() {
     hideStatus();
     els.btnExportJson.disabled = true;
-    els.btnExportJson.textContent = 'Exporting…';
+    els.btnExportJson.textContent = 'Exporting\u2026';
 
     try {
       const data = await fetchJson(`${API}/database/export`);
