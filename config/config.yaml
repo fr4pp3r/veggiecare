@@ -151,9 +151,9 @@ pest_detection:
 npk_recommendations:
   enabled: true
   # Engine: rule_engine | sklearn | onnx | mock
-  engine: rule_engine
+  engine: onnx
   # Model path for ML engines (relative to repo root)
-  model_path: models/fertilizer_rf.joblib
+  model_path: models/fertilizer_rf.onnx
   # Crop type determines target NPK ranges. Options: tomato, pepper, lettuce, cucumber, custom
   crop_type: tomato
   # Growth stage: seedling, vegetative, flowering, fruiting

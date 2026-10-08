@@ -235,7 +235,7 @@
     renderAutomation(data.automation);
 
     // Recommendation
-    renderRecommendation(data.recommendation);
+    renderRecommendation(data.recommendation, data.relays);
 
     // Alerts
     renderAlerts(data.alerts);
@@ -379,7 +379,7 @@
     }
   }
 
-  function renderRecommendation(rec) {
+  function renderRecommendation(rec, relays) {
     if (!els.recStatus) return;
 
     const activeDiv = els.recStatus.querySelector('.rec-active');
@@ -430,7 +430,7 @@
     }
     // Duration
     if (els.recDur) {
-      const r1 = data?.relays?.find(r => r.id === 1);
+      const r1 = relays?.find(r => r.id === 1);
       els.recDur.textContent = r1?.activation_duration_seconds || '—';
     }
     // Meta
