@@ -9,7 +9,6 @@ from pest_detection.detector import DetectionResult
 
 def _base_pest_cfg():
     return {
-        "pest_classes": ["aphid", "caterpillar", "fungus"],
         "mock": {
             "mode": "none",
             "sequence": [],
@@ -70,10 +69,12 @@ def test_mock_detector_random_mode_respects_probability():
     cfg["mock"]["random"]["confidence_max"] = 0.95
     det = MockDetector(cfg)
 
+    from pest_detection.mock_detector import DEFAULT_PEST_CLASSES
+
     for _ in range(10):
         result = det.detect()
         assert result.detected is True
-        assert result.pest_class in cfg["pest_classes"]
+        assert result.pest_class in DEFAULT_PEST_CLASSES
         assert 0.90 <= result.confidence <= 0.95
 
 

@@ -77,7 +77,6 @@ def temp_config(tmp_path: Path) -> Path:
             "confidence_threshold": 0.70,
             "capture_interval_seconds": 300,
             "relay_activation_duration_seconds": 5,
-            "pest_classes": ["aphid", "caterpillar", "fungus"],
             "mock": {"mode": "none", "sequence": [], "random": {"detection_probability": 0.25, "confidence_min": 0.50, "confidence_max": 0.98}},
         },
         "camera": {"enabled": False, "capture_interval_seconds": 300, "image_dir": str(tmp_path / "images")},

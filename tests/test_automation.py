@@ -72,7 +72,6 @@ def _make_config(tmp_path=None):
             "capture_interval_seconds": 1,
             "max_activations_per_month": 2,
             "relay_activation_duration_seconds": 2,
-            "pest_classes": ["aphid", "caterpillar", "fungus"],
             "mock": {"mode": "none", "sequence": [], "random": {"detection_probability": 0.25, "confidence_min": 0.50, "confidence_max": 0.98}},
         },
         "camera": {"enabled": False, "capture_interval_seconds": 1},

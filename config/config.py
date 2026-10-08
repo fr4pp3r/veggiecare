@@ -202,11 +202,7 @@ def _validate_pest(section: dict, errors: list[str], relay_ids: set[int]) -> Non
     _number(section, "confidence_threshold", errors, path, minimum=0, maximum=1)
     _number(section, "capture_interval_seconds", errors, path, minimum=1)
     _int(section, "max_activations_per_month", errors, path, minimum=0)
-    classes = _field(section, "pest_classes", list, errors, path)
-    if classes is not None:
-        for idx, cls in enumerate(classes):
-            if not isinstance(cls, str) or not cls.strip():
-                errors.append(f"{path}.pest_classes[{idx}]: must be a non-empty string")
+    # pest_classes is silently ignored for backward compatibility
     mock = _field(section, "mock", dict, errors, path)
     if mock is not None:
         _in(mock, "mode", _DETECTOR_MODES, errors, f"{path}.mock")

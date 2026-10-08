@@ -112,6 +112,13 @@ SETTINGS_GROUPS: list[dict[str, Any]] = [
         "description": "Protection so pumps are never left running by accident.",
         "fields": [
             {
+                "key": "relays.default_duration_seconds",
+                "label": "Relay activation duration",
+                "description": "How long each relay stays active when triggered. Applies to all relays unless overridden per-relay in the config file.",
+                "type": "slider",
+                "min": 5, "max": 600, "step": 5, "unit": "sec", "factor": 1, "integer": True,
+            },
+            {
                 "key": "relays.auto_off_watchdog_seconds",
                 "label": "Automatic pump shut-off",
                 "description": "If any pump stays on longer than this, the system switches it off automatically. Protects the pumps even if something goes wrong.",

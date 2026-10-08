@@ -16,6 +16,11 @@ from typing import Any
 
 from pest_detection.detector import DetectionResult, PestDetector
 
+DEFAULT_PEST_CLASSES = [
+    "aphid", "caterpillar", "fungus", "mite", "whitefly",
+    "slug", "snail", "beetle", "weevil", "thrips",
+]
+
 
 class MockDetector(PestDetector):
     """Simulated pest detector for development and testing."""
@@ -42,8 +47,8 @@ class MockDetector(PestDetector):
         self._conf_min = float(random_cfg.get("confidence_min", 0.50))
         self._conf_max = float(random_cfg.get("confidence_max", 0.98))
 
-        # default pest class when random detects
-        self._default_pest_class = cfg.get("pest_classes", ["aphid"])[0]
+        # pest classes for random mode (built-in, not user-configured)
+        self._pest_classes = DEFAULT_PEST_CLASSES
 
     def detect(self, image_path: str | None = None) -> DetectionResult:
         if self._mode == "none":
@@ -61,7 +66,8 @@ class MockDetector(PestDetector):
         # random
         if _random.random() < self._detection_prob:
             conf = round(_random.uniform(self._conf_min, self._conf_max), 2)
-            return self._make_result(detected=True, pest_class=self._default_pest_class, confidence=conf)
+            pest_class = _random.choice(self._pest_classes)
+            return self._make_result(detected=True, pest_class=pest_class, confidence=conf)
 
         return self._make_result(detected=False, pest_class=None, confidence=None)
 

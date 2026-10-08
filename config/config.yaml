@@ -127,10 +127,8 @@ pest_detection:
   # The monthly activation limit applies ONLY to the pest response relay.
   # NPK alerts and soil-moisture watering are never limited.
   max_activations_per_month: 2
-  pest_classes:
-    - aphid
-    - caterpillar
-    - fungus
+  # Pest classes are determined by the model's training data — the AI
+  # reports whatever pest category it detects. No user configuration needed.
   mock:
     # none       -> never detects anything
     # random     -> random detections using the settings below

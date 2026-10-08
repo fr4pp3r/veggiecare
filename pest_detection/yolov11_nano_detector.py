@@ -35,7 +35,6 @@ class YoloV11NanoDetector(PestDetector):
         self._confidence_threshold = float(cfg.get("confidence_threshold", 0.70))
         self._model_path = cfg.get("model_path")
         self._model = None
-        self._classes = cfg.get("pest_classes", [])
 
         try:
             from ultralytics import YOLO  # type: ignore
@@ -93,15 +92,9 @@ class YoloV11NanoDetector(PestDetector):
                         best_class = r.names.get(top1, str(top1)) if hasattr(r, "names") else str(top1)
 
             if best_conf >= self._confidence_threshold and best_class:
-                # Map to configured pest class if possible
-                mapped = best_class
-                for pc in self._classes:
-                    if pc.lower() in str(mapped).lower():
-                        mapped = pc
-                        break
                 return DetectionResult(
                     detected=True,
-                    pest_class=mapped,
+                    pest_class=best_class,
                     confidence=round(best_conf, 4),
                     image_path=image_path,
                     timestamp=datetime.now(),
