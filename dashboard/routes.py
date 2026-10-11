@@ -360,6 +360,22 @@ def api_pest_simulate():
     })
 
 
+@bp.route("/api/pest/scan", methods=["POST"])
+def api_pest_scan():
+    """Trigger a pest operation now, outside the scheduled monitor interval.
+
+    Body ``{"mode": "stepper"}`` runs a full camera sweep (motor out and
+    back); ``{"mode": "camera"}`` (the default) analyses a single capture.
+    """
+    ctrl = _controller()
+    if ctrl is None:
+        return jsonify({"ok": False, "error": "Controller not ready"}), 503
+    body = request.get_json(silent=True) or {}
+    with_stepper = body.get("mode") == "stepper"
+    ok, message = ctrl.request_pest_scan(with_stepper)
+    return jsonify({"ok": ok, "message": message})
+
+
 # ======================================================================
 # JSON API — system test (diagnostics)
 # ======================================================================

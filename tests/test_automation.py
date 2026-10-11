@@ -348,3 +348,283 @@ def test_pest_detection_activates_relay_3(automation_setup, tmp_path):
     assert len(pest_rows) == 1
     assert pest_rows[0]["detected"] == 1
     assert pest_rows[0]["pest_class"] == "aphid"
+
+
+def test_request_pest_scan_respects_gates(tmp_path):
+    """request_pest_scan only queues work when enabled, un-paused, detector present."""
+    from pest_detection.mock_detector import MockDetector
+
+    cfg = _make_config(tmp_path)
+    db = Database(cfg["database"]["path"])
+    relays = RelayController(cfg["relays"], simulate=True)
+    state = SystemState(cfg)
+    ctrl = AutomationController(
+        config=cfg, db=db, relays=relays, state=state, sensors=_make_sensors(),
+    )
+    try:
+        pest_cfg = cfg["pest_detection"]
+
+        # Disabled by default -> refused with a clear reason.
+        ok, msg = ctrl.request_pest_scan()
+        assert ok is False
+        assert "turned off" in msg.lower()
+
+        # Enabled but no detector attached -> refused.
+        pest_cfg["enabled"] = True
+        ok, msg = ctrl.request_pest_scan()
+        assert ok is False
+        assert "detector" in msg.lower()
+
+        # Stepper mode without a stepper -> refused (checked before "busy").
+        ctrl.attach_detector(MockDetector(pest_cfg))
+        ok, msg = ctrl.request_pest_scan(with_stepper=True)
+        assert ok is False
+        assert "stepper" in msg.lower()
+
+        # Enabled + detector, camera-only -> accepted.
+        ok, msg = ctrl.request_pest_scan()
+        assert ok is True
+
+        # Paused -> refused, even when otherwise ready.
+        ctrl.pause()
+        ok, msg = ctrl.request_pest_scan()
+        assert ok is False
+        assert "paused" in msg.lower()
+    finally:
+        ctrl.stop()
+        relays.shutdown()
+        db.close()
+
+
+# ----------------------------------------------------------------------
+# Stepper pest sweep
+# ----------------------------------------------------------------------
+
+
+class _FakeStepper:
+    """Records motion calls instead of driving hardware; no sleeping."""
+
+    name = "fake-stepper"
+    simulate = True
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[int, bool]] = []
+        self.off_calls = 0
+
+    def step(self, steps: int, delay: float = 0.002, clockwise: bool = True) -> None:
+        self.calls.append((steps, clockwise))
+
+    def off(self) -> None:
+        self.off_calls += 1
+
+    @property
+    def forward_total(self) -> int:
+        return sum(s for s, cw in self.calls if cw)
+
+    @property
+    def backward_total(self) -> int:
+        return sum(s for s, cw in self.calls if not cw)
+
+
+class _FlakyStepper(_FakeStepper):
+    """Raises on the Nth forward call, to simulate a stalled motor."""
+
+    def __init__(self, fail_on_forward: int = 2) -> None:
+        super().__init__()
+        self._forward = 0
+        self._fail_on = fail_on_forward
+
+    def step(self, steps: int, delay: float = 0.002, clockwise: bool = True) -> None:
+        if clockwise:
+            self._forward += 1
+            if self._forward >= self._fail_on:
+                raise RuntimeError("motor stalled")
+        super().step(steps, delay, clockwise)
+
+
+class _FakeCamera:
+    name = "fake-camera"
+
+    def capture(self, save_path=None):
+        return str(save_path) if save_path else "/tmp/fake.jpg"
+
+
+class _CountingDetector:
+    """Detects on/after the Nth call; ignores the image path."""
+
+    name = "counting"
+
+    def __init__(self, detect_on: int | None = None) -> None:
+        self.calls = 0
+        self.detect_on = detect_on
+
+    def detect(self, image_path=None):
+        from pest_detection.detector import DetectionResult
+
+        self.calls += 1
+        hit = self.detect_on is not None and self.calls >= self.detect_on
+        return DetectionResult(
+            detected=hit,
+            pest_class="aphid" if hit else None,
+            confidence=0.9 if hit else None,
+            image_path=image_path,
+            model="counting",
+        )
+
+
+def _sweep_config(tmp_path, **stepper_overrides):
+    """Config with pest enabled and a small, fast sweep geometry.
+
+    delay=0.05 (the max clamp) + analysis_interval 1.0 -> 5 steps per analysis
+    chunk; 1.0in of travel at 2.125in / 200 steps-per-rev -> 30 steps total.
+    """
+    cfg = _make_config(tmp_path)
+    cfg["pest_detection"]["enabled"] = True
+    cfg["pest_detection"]["confidence_threshold"] = 0.5
+    cfg["pest_detection"]["analysis_interval_seconds"] = 1.0
+    stepper = {
+        "enabled": True,
+        "pins": [23, 24, 25, 26],
+        "delay": 0.05,
+        "simulate": True,
+        "wheel_diameter_in": 2.125,
+        "extension_distance_in": 1.0,
+        "steps_per_rev": 200,
+    }
+    stepper.update(stepper_overrides)
+    cfg["stepper"] = stepper
+    return cfg
+
+
+def _sweep_controller(cfg, stepper, detector, camera):
+    db = Database(cfg["database"]["path"])
+    relays = RelayController(cfg["relays"], simulate=True)
+    state = SystemState(cfg)
+    ctrl = AutomationController(
+        config=cfg, db=db, relays=relays, state=state, sensors=_make_sensors(),
+    )
+    if stepper is not None:
+        ctrl.attach_stepper(stepper)
+    ctrl.attach_detector(detector)
+    ctrl.attach_camera(camera)
+    return ctrl, state, relays, db
+
+
+def test_sweep_geometry_uses_config(tmp_path):
+    """Default geometry (2-1/8in wheel, 3ft, 2048 steps/rev) -> ~11,044 steps."""
+    cfg = _sweep_config(tmp_path)
+    cfg["stepper"].update(
+        {"delay": 0.003, "extension_distance_in": 36.0, "steps_per_rev": 2048}
+    )
+    ctrl, state, relays, db = _sweep_controller(
+        cfg, _FakeStepper(), _CountingDetector(), _FakeCamera()
+    )
+    try:
+        total_steps, delay = ctrl._sweep_geometry()
+        assert total_steps == 11044
+        assert delay == 0.003
+    finally:
+        ctrl.stop()
+        relays.shutdown()
+        db.close()
+
+
+def test_sweep_skips_absurd_geometry(tmp_path):
+    """A geometry that would command a runaway motion is refused, not executed."""
+    cfg = _sweep_config(
+        tmp_path, wheel_diameter_in=0.5, extension_distance_in=120.0, steps_per_rev=8000
+    )
+    stepper = _FakeStepper()
+    ctrl, state, relays, db = _sweep_controller(
+        cfg, stepper, _CountingDetector(), _FakeCamera()
+    )
+    try:
+        from automation.controller import PestTask
+
+        ctrl._run_sweep(PestTask(mode="sweep", source="test"))
+
+        assert stepper.calls == []
+        assert any("safe range" in a["message"] for a in state.snapshot()["alerts"])
+    finally:
+        ctrl.stop()
+        relays.shutdown()
+        db.close()
+
+
+def test_sweep_detection_aborts_retracts_and_responds_once(tmp_path):
+    """A mid-sweep detection stops the outward leg, retracts, and responds once."""
+    cfg = _sweep_config(tmp_path)
+    stepper = _FakeStepper()
+    detector = _CountingDetector(detect_on=2)  # detects on the 2nd analysis
+    ctrl, state, relays, db = _sweep_controller(cfg, stepper, detector, _FakeCamera())
+    try:
+        from automation.controller import PestTask
+
+        ctrl._run_sweep(PestTask(mode="sweep", source="test"))
+
+        # Two 5-step analysis chunks out, then retract the same 10 steps.
+        assert detector.calls == 2
+        assert stepper.forward_total == 10
+        assert stepper.backward_total == 10
+        assert stepper.off_calls == 1
+
+        rows = ctrl._db.recent_pest_detections(limit=5)
+        assert len(rows) == 1  # one summary row per sweep, not one per frame
+        assert rows[0]["detected"] == 1
+        assert rows[0]["pest_class"] == "aphid"
+
+        assert relays.is_active(3) is True  # responded once
+    finally:
+        ctrl.stop()
+        relays.shutdown()
+        db.close()
+
+
+def test_sweep_without_detection_records_one_summary(tmp_path):
+    """A clean sweep travels the full distance, retracts, and logs one row."""
+    cfg = _sweep_config(tmp_path)
+    stepper = _FakeStepper()
+    detector = _CountingDetector(detect_on=None)
+    ctrl, state, relays, db = _sweep_controller(cfg, stepper, detector, _FakeCamera())
+    try:
+        from automation.controller import PestTask
+
+        ctrl._run_sweep(PestTask(mode="sweep", source="test"))
+
+        assert detector.calls == 6  # 30 steps / 5 per chunk
+        assert stepper.forward_total == 30
+        assert stepper.backward_total == 30
+        assert stepper.off_calls == 1
+
+        rows = ctrl._db.recent_pest_detections(limit=5)
+        assert len(rows) == 1
+        assert rows[0]["detected"] == 0
+        assert relays.is_active(3) is False
+    finally:
+        ctrl.stop()
+        relays.shutdown()
+        db.close()
+
+
+def test_sweep_motion_failure_still_retracts(tmp_path):
+    """A stalled motor aborts the sweep but the camera is retracted anyway."""
+    cfg = _sweep_config(tmp_path)
+    stepper = _FlakyStepper(fail_on_forward=2)
+    ctrl, state, relays, db = _sweep_controller(
+        cfg, stepper, _CountingDetector(), _FakeCamera()
+    )
+    try:
+        from automation.controller import PestTask
+
+        ctrl._run_sweep(PestTask(mode="sweep", source="test"))
+
+        # One chunk extended, the failed chunk raised, so only that chunk is
+        # retracted; the coils are released and the error is surfaced.
+        assert stepper.forward_total == 5
+        assert stepper.backward_total == 5
+        assert stepper.off_calls == 1
+        assert state.snapshot()["pest"]["error"]
+    finally:
+        ctrl.stop()
+        relays.shutdown()
+        db.close()

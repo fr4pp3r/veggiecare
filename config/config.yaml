@@ -122,7 +122,12 @@ pest_detection:
   model_path:
 
   confidence_threshold: 0.70
-  capture_interval_seconds: 300
+  # Automated pest monitor: every capture_interval_seconds the stepper drives
+  # the camera out and back (see `stepper` below) while the AI analyses frames.
+  # 600 = every 10 minutes.
+  capture_interval_seconds: 600
+  # AI analysis cadence (seconds) while the camera is moving during a sweep.
+  analysis_interval_seconds: 1.0
   relay_activation_duration_seconds: 120
   # The monthly activation limit applies ONLY to the pest response relay.
   # NPK alerts and soil-moisture watering are never limited.
@@ -307,3 +312,9 @@ stepper:
   steps_per_plant: 512  # ~90 degrees
   delay: 0.003
   simulate: false
+  # Camera-sweep geometry. A motor step count is derived from these:
+  #   steps = extension_distance_in / (pi * wheel_diameter_in) * steps_per_rev
+  # Default: 2-1/8 in wheel, 3 ft extension, 2048 steps/rev (~11,000 steps).
+  wheel_diameter_in: 2.125
+  extension_distance_in: 36.0
+  steps_per_rev: 2048

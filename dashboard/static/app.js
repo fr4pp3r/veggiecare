@@ -42,6 +42,9 @@
     pestMax: n('pest-max'),
     pestRemaining: n('pest-remaining'),
     pestSimControls: n('pest-sim-controls'),
+    pestScanActions: n('pest-scan-actions'),
+    btnScanStepper: n('btn-scan-stepper'),
+    btnScanCamera: n('btn-scan-camera'),
     simPestClass: n('sim-pest-class'),
     simConfidence: n('sim-confidence'),
     simConfVal: n('sim-conf-val'),
@@ -272,11 +275,13 @@
         : 'Pest detection is turned off in Settings.';
       els.pestStatus.style.display = 'block';
       els.pestDetails.classList.add('hidden');
+      els.pestScanActions.classList.add('hidden');
       els.pestSimControls.style.display = 'none';
       return;
     }
     els.pestStatus.style.display = 'none';
     els.pestDetails.classList.remove('hidden');
+    els.pestScanActions.classList.remove('hidden');
     els.pestSimControls.style.display = 'flex';
     els.pestDetails.innerHTML = `
       <div class="pest-detail-row"><span class="label">Status</span><span class="value ${pest.detected ? 'detected' : 'not-detected'}">${pest.detected ? 'DETECTED' : 'None'}</span></div>
@@ -880,6 +885,22 @@
     } catch (e) { addAlert('error', 'Dashboard', e.message); }
   }
 
+  async function forcePestMonitor(mode) {
+    const btn = mode === 'stepper' ? els.btnScanStepper : els.btnScanCamera;
+    if (btn) btn.disabled = true;
+    try {
+      const res = await postJson(`${API}/pest/scan`, { mode });
+      addAlert(res.ok ? 'info' : 'error', 'Dashboard',
+        res.message || (res.ok ? 'Pest monitor started.' : 'Could not start the pest monitor.'));
+      if (res.ok) poll(); // refresh the pest card promptly
+    } catch (e) {
+      addAlert('error', 'Dashboard', e.message);
+    } finally {
+      // The request only schedules work; re-enable after a short delay.
+      setTimeout(() => { if (btn) btn.disabled = false; }, 5000);
+    }
+  }
+
   async function runSystemTest() {
     const btn = els.btnSystemTest;
     const resultsDiv = document.getElementById('system-test-results');
@@ -975,6 +996,8 @@
   els.btnPause.addEventListener('click', pauseAutomation);
   els.btnResume.addEventListener('click', resumeAutomation);
   els.btnSimPest.addEventListener('click', simulatePest);
+  els.btnScanStepper?.addEventListener('click', () => forcePestMonitor('stepper'));
+  els.btnScanCamera?.addEventListener('click', () => forcePestMonitor('camera'));
   els.btnSaveSettings.addEventListener('click', saveSettings);
   els.btnRestartServer.addEventListener('click', restartServer);
   els.btnSystemTest?.addEventListener('click', runSystemTest);

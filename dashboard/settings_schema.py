@@ -91,6 +91,13 @@ SETTINGS_GROUPS: list[dict[str, Any]] = [
                 "type": "toggle",
             },
             {
+                "key": "pest_detection.capture_interval_seconds",
+                "label": "How often to run the pest monitor",
+                "description": "The system moves the camera out and back and checks for pests this often. Changes apply after a restart.",
+                "type": "slider",
+                "min": 1, "max": 60, "step": 1, "unit": "min", "factor": 60, "integer": True,
+            },
+            {
                 "key": "pest_detection.confidence_threshold",
                 "label": "Confidence required to respond",
                 "description": "How sure the system must be before it reacts to a pest. Higher = fewer reactions, but weaker detections are ignored.",

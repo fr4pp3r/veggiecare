@@ -76,6 +76,9 @@ def test_app(tmp_path):
             from datetime import datetime
             return DetectionResult(detected=detected, pest_class=pest_class, confidence=confidence, model="mock")
 
+        def request_pest_scan(self, with_stepper=False):
+            return True, "Pest scan requested."
+
     class MockRelays:
         def deactivate(self, relay_id):
             pass
@@ -175,6 +178,15 @@ def test_api_pest_simulate(test_app):
     assert data["ok"] is True
     assert data["detected"] is True
     assert data["pest_class"] == "aphid"
+
+
+def test_api_pest_scan(test_app):
+    client = test_app.test_client()
+    resp = client.post("/api/pest/scan")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["ok"] is True
+    assert "message" in data
 
 
 def test_api_detections_empty_without_db(test_app):

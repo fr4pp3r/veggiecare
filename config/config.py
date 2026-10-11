@@ -201,6 +201,9 @@ def _validate_pest(section: dict, errors: list[str], relay_ids: set[int]) -> Non
             errors.append(f"{path}.relay_id: relay {relay_id} not defined in relays.items")
     _number(section, "confidence_threshold", errors, path, minimum=0, maximum=1)
     _number(section, "capture_interval_seconds", errors, path, minimum=1)
+    # Automated-sweep analysis cadence (optional; absent in older configs).
+    if "analysis_interval_seconds" in section:
+        _number(section, "analysis_interval_seconds", errors, path, minimum=0.1)
     _int(section, "max_activations_per_month", errors, path, minimum=0)
     # pest_classes is silently ignored for backward compatibility
     mock = _field(section, "mock", dict, errors, path)
@@ -229,6 +232,23 @@ def _validate_pest(section: dict, errors: list[str], relay_ids: set[int]) -> Non
             cmax = random_cfg.get("confidence_max")
             if _is_number(cmin) and _is_number(cmax) and float(cmin) > float(cmax):
                 errors.append(f"{path}.mock.random: confidence_min must be <= confidence_max")
+
+
+def _validate_stepper(section: dict, errors: list[str]) -> None:
+    path = "stepper"
+    if "enabled" in section:
+        _bool(section, "enabled", errors, path)
+    if "pins" in section:
+        _field(section, "pins", list, errors, path)
+    if "delay" in section:
+        _number(section, "delay", errors, path, minimum=0.0001, maximum=0.1)
+    # Camera-sweep geometry (optional; only checked when present).
+    if "wheel_diameter_in" in section:
+        _number(section, "wheel_diameter_in", errors, path, minimum=0.1)
+    if "extension_distance_in" in section:
+        _number(section, "extension_distance_in", errors, path, minimum=0.1)
+    if "steps_per_rev" in section:
+        _int(section, "steps_per_rev", errors, path, minimum=1)
 
 
 def _validate_camera(section: dict, errors: list[str]) -> None:
@@ -371,6 +391,10 @@ def validate(cfg: dict) -> None:
     camera_cfg = _field(cfg, "camera", dict, errors, "config")
     if camera_cfg is not None:
         _validate_camera(camera_cfg, errors)
+
+    stepper_cfg = cfg.get("stepper")
+    if isinstance(stepper_cfg, dict):
+        _validate_stepper(stepper_cfg, errors)
 
     npk_rec_cfg = _field(cfg, "npk_recommendations", dict, errors, "config")
     if npk_rec_cfg is not None:

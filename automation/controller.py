@@ -24,9 +24,14 @@ Safety
 from __future__ import annotations
 
 import logging
+import math
+import queue
+import tempfile
 import threading
 import time
+from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from database.database import Database, DatabaseError
@@ -35,6 +40,18 @@ from sensors.base import SensorError
 from state import SystemState
 
 logger = logging.getLogger(__name__)
+
+# Hard ceiling on one sweep leg. Guards against a mis-typed geometry config
+# (e.g. extension_distance_in: 3600) commanding a runaway motion.
+_MAX_SWEEP_STEPS = 50000
+
+
+@dataclass(slots=True)
+class PestTask:
+    """One queued pest operation for the background pest worker."""
+
+    mode: str           # "sweep" | "camera"
+    source: str = "automatic"
 
 
 class AutomationController:
@@ -73,6 +90,17 @@ class AutomationController:
         self._last_npk_read = 0.0
         self._last_moisture_read = 0.0
         self._last_pest_cycle = 0.0
+
+        # Pest work runs on a dedicated worker thread: a stepper sweep blocks
+        # for minutes and must not stall the sensor tick. _pest_active is
+        # reserved at enqueue time and cleared once the queue drains.
+        self._pest_queue: queue.Queue[PestTask] = queue.Queue()
+        self._pest_worker: threading.Thread | None = None
+        self._pest_active = False
+        self._pest_lock = threading.Lock()
+        self._pest_abort = threading.Event()
+        # Monotonic timestamp of the last automated pest monitor run.
+        self._last_pest_monitor = 0.0
 
         # Timestamps (monotonic) of the last database log for each sensor.
         self._last_npk_log = 0.0
@@ -126,8 +154,24 @@ class AutomationController:
 
     def stop(self) -> None:
         self._stop.set()
+        # Ask any in-flight sweep to abort and retract.
+        self._pest_abort.set()
+        # Drain queued pest work so the worker can exit promptly.
+        while True:
+            try:
+                self._pest_queue.get_nowait()
+                self._pest_queue.task_done()
+            except queue.Empty:
+                break
         if self._thread is not None:
             self._thread.join(timeout=5.0)
+        if self._pest_worker is not None:
+            self._pest_worker.join(timeout=30.0)
+        if self._stepper is not None:
+            try:
+                self._stepper.off()
+            except Exception:
+                pass
         self._state.set_automation(running=False)
         logger.info("Automation controller stopped")
 
@@ -172,12 +216,15 @@ class AutomationController:
                 self._read_moisture(now, moist_cfg)
             self._evaluate_watering(now, moist_cfg)
 
-        # 3. Pest detection cycle (only when explicitly enabled)
+        # 3. Pest monitoring — schedule only; the dedicated worker does the
+        #    long-running (blocking) stepper sweep so this tick stays fast.
         pest_cfg = self._cfg.get("pest_detection", {})
         if pest_cfg.get("enabled") and self._detector is not None:
-            interval = float(pest_cfg.get("capture_interval_seconds", 300))
-            if now - self._last_pest_cycle >= interval:
-                self._pest_cycle(now, pest_cfg)
+            interval = float(pest_cfg.get("capture_interval_seconds", 600))
+            if now - self._last_pest_monitor >= interval:
+                self._last_pest_monitor = now
+                mode = "sweep" if self._stepper is not None else "camera"
+                self._enqueue_pest_task(mode, "automatic")
 
         # 4. Database health check (infrequent — every 60 ticks ≈ 60 s)
         self._check_db(now)
@@ -363,7 +410,238 @@ class AutomationController:
     # Pest detection cycle
     # ------------------------------------------------------------------
 
-    def _pest_cycle(self, now: float, cfg: dict) -> None:
+    def request_pest_scan(self, with_stepper: bool = False) -> tuple[bool, str]:
+        """Queue an immediate pest operation for the background worker.
+
+        ``with_stepper`` runs a full camera sweep (motor out and back);
+        otherwise a single camera capture is analysed. Respects pause, the
+        enabled flag, an attached detector, and one-at-a-time execution.
+        Returns ``(accepted, human message)``.
+        """
+        pest_cfg = self._cfg.get("pest_detection", {})
+        if not pest_cfg.get("enabled"):
+            return False, "Pest control is turned off."
+        if self._detector is None:
+            return False, "No pest detector is loaded."
+        if self._state.automation.get("paused"):
+            return False, "Automation is paused."
+        if with_stepper and self._stepper is None:
+            return False, "Stepper motor is not available."
+        if self._pest_active:
+            return False, "A pest scan is already running."
+
+        mode = "sweep" if with_stepper else "camera"
+        source = "dashboard_sweep" if with_stepper else "dashboard_camera"
+        if not self._enqueue_pest_task(mode, source):
+            return False, "A pest scan is already running."
+        if with_stepper:
+            return True, "Sweep requested — the camera is moving; results appear shortly."
+        return True, "Camera scan requested — results appear shortly."
+
+    # ------------------------------------------------------------------
+    # pest worker (sweeps and camera-only scans run off the tick thread)
+    # ------------------------------------------------------------------
+
+    def _ensure_pest_worker(self) -> None:
+        if self._pest_worker is not None and self._pest_worker.is_alive():
+            return
+        self._pest_worker = threading.Thread(
+            target=self._pest_worker_loop, daemon=True, name="pest-worker",
+        )
+        self._pest_worker.start()
+
+    def _enqueue_pest_task(self, mode: str, source: str) -> bool:
+        """Reserve the worker (if idle) and queue one task. False if busy."""
+        with self._pest_lock:
+            if self._pest_active:
+                return False
+            self._pest_active = True
+        self._ensure_pest_worker()
+        self._pest_queue.put(PestTask(mode=mode, source=source))
+        return True
+
+    def _pest_worker_loop(self) -> None:
+        while not self._stop.is_set():
+            try:
+                task = self._pest_queue.get(timeout=1.0)
+            except queue.Empty:
+                continue
+            self._pest_abort.clear()
+            try:
+                if task.mode == "sweep":
+                    self._run_sweep(task)
+                else:
+                    self._run_camera_only(task)
+            except Exception:
+                logger.exception("Pest worker task (%s) failed", task.mode)
+            finally:
+                self._pest_queue.task_done()
+                with self._pest_lock:
+                    if self._pest_queue.empty():
+                        self._pest_active = False
+
+    def _sweep_geometry(self) -> tuple[int, float]:
+        """Derive the one-way extension step count and step delay from config."""
+        stepper_cfg = self._cfg.get("stepper", {})
+
+        def _clamp(value: float, low: float, high: float) -> float:
+            return max(low, min(value, high))
+
+        wheel = _clamp(float(stepper_cfg.get("wheel_diameter_in", 2.125)), 0.5, 10.0)
+        dist = _clamp(float(stepper_cfg.get("extension_distance_in", 36.0)), 1.0, 120.0)
+        steps_per_rev = int(_clamp(float(stepper_cfg.get("steps_per_rev", 2048)), 200, 8000))
+        delay = _clamp(float(stepper_cfg.get("delay", 0.003)), 0.0005, 0.05)
+
+        revolutions = dist / (math.pi * wheel)
+        total_steps = int(round(revolutions * steps_per_rev))
+        return total_steps, delay
+
+    def _capture_and_detect(self, save_path: Path | None = None) -> Any:
+        """One capture + detect. Returns a DetectionResult, or None on error.
+
+        ``save_path`` lets a sweep overwrite a single temp frame instead of
+        writing one image per analysis to disk.
+        """
+        image_path = None
+        if self._camera is not None:
+            try:
+                image_path = self._camera.capture(save_path=save_path)
+            except Exception as exc:
+                self._state.update_camera(error=str(exc))
+                self._log_event("ERROR", "camera", str(exc))
+                return None
+        try:
+            return self._detector.detect(image_path=image_path)
+        except Exception as exc:
+            self._state.update_pest(error=str(exc))
+            self._log_event("ERROR", "pest_detection", str(exc))
+            return None
+
+    def _run_sweep(self, task: PestTask) -> None:
+        """Drive the camera out and back, analysing frames as it moves.
+
+        A positive detection aborts the outward leg and retracts immediately;
+        the response fires once per sweep (monthly limit still applies). The
+        camera is always retracted to home, even on error or abort.
+        """
+        pest_cfg = self._cfg.get("pest_detection", {})
+        total_steps, delay = self._sweep_geometry()
+        if total_steps <= 0 or total_steps > _MAX_SWEEP_STEPS:
+            msg = f"Stepper sweep skipped: {total_steps} steps is outside the safe range"
+            self._state.add_alert("ERROR", msg, "pest_detection")
+            self._log_event("ERROR", "pest_detection", msg)
+            return
+
+        analysis_interval = max(0.1, float(pest_cfg.get("analysis_interval_seconds", 1.0)))
+        # StepperMotor.step() sleeps `delay` after each of 4 phases per step,
+        # so this many steps is roughly one analysis interval of motion.
+        steps_per_chunk = max(1, int(round(analysis_interval / (4.0 * delay))))
+        threshold = float(pest_cfg.get("confidence_threshold", 0.70))
+
+        sweep_path = Path(tempfile.gettempdir()) / "veggiecare_sweep.jpg"
+        extended = 0
+        chunks = 0
+        detection = None
+        motion_error = None
+
+        try:
+            while (
+                extended < total_steps
+                and not self._pest_abort.is_set()
+                and not self._stop.is_set()
+            ):
+                chunk = min(steps_per_chunk, total_steps - extended)
+                self._stepper.step(steps=chunk, delay=delay, clockwise=True)
+                extended += chunk
+                chunks += 1
+                result = self._capture_and_detect(save_path=sweep_path)
+                if result is not None and result.detected and (
+                    result.confidence is None or result.confidence >= threshold
+                ):
+                    detection = result
+                    break
+        except Exception as exc:
+            logger.exception("Pest sweep motion failed")
+            motion_error = str(exc)
+        finally:
+            try:
+                if extended > 0 and self._stepper is not None:
+                    self._stepper.step(steps=extended, delay=delay, clockwise=False)
+            except Exception:
+                logger.exception("Pest sweep retract failed")
+            finally:
+                if self._stepper is not None:
+                    try:
+                        self._stepper.off()
+                    except Exception:
+                        pass
+
+        self._log_event(
+            "INFO", task.source,
+            f"Pest sweep finished ({chunks} analyses, {extended} steps out)",
+        )
+        self._handle_sweep_result(detection, task.source, error=motion_error)
+
+    def _run_camera_only(self, task: PestTask) -> None:
+        self._pest_cycle(
+            time.monotonic(), self._cfg.get("pest_detection", {}), source=task.source,
+        )
+
+    def _handle_sweep_result(self, result: Any, source: str, error: str | None = None) -> None:
+        """Record one summary row per sweep and respond once when detected."""
+        pest_cfg = self._cfg.get("pest_detection", {})
+        threshold = float(pest_cfg.get("confidence_threshold", 0.70))
+        detected = bool(
+            result is not None
+            and result.detected
+            and (result.confidence is None or result.confidence >= threshold)
+        )
+        ts = datetime.now().isoformat(timespec="seconds")
+        model = result.model if result is not None else getattr(self._detector, "name", "unknown")
+        image_path = getattr(result, "image_path", None) if result is not None else None
+
+        self._state.update_pest(
+            detected=detected,
+            pest_class=result.pest_class if detected else None,
+            confidence=result.confidence if detected else None,
+            image_path=image_path,
+            timestamp=ts,
+            model=model,
+            error=error,
+            configured=True,
+        )
+
+        try:
+            self._db.insert_pest_detection(
+                detected=detected,
+                pest_class=result.pest_class if detected else None,
+                confidence=result.confidence if detected else None,
+                image_path=image_path,
+                model=model,
+                camera=getattr(self._camera, "name", None) if self._camera else None,
+                timestamp=ts,
+            )
+            self._state.update_db(ok=True, last_write=ts)
+        except DatabaseError as exc:
+            self._state.update_db(ok=False, error=str(exc))
+            logger.error("DB write failed (pest sweep): %s", exc)
+
+        if not detected:
+            return
+
+        alert_msg = f"Pest detected: {result.pest_class} (confidence {result.confidence:.2f})"
+        self._state.add_alert("WARNING", alert_msg, source)
+        self._log_event("WARNING", source, alert_msg)
+
+        relay_id = int(pest_cfg.get("relay_id", 3))
+        duration = float(pest_cfg.get("relay_activation_duration_seconds", 120))
+        for item in self._cfg.get("relays", {}).get("items", []):
+            if int(item.get("id", 0)) == relay_id:
+                duration = float(item.get("activation_duration_seconds", duration))
+                break
+        self._activate_pest_response(relay_id, duration, ts, source)
+
+    def _pest_cycle(self, now: float, cfg: dict, source: str = "pest_detection") -> None:
         self._last_pest_cycle = now
 
         # Capture
@@ -422,8 +700,8 @@ class AutomationController:
         # Alert + Relay 3
         if effective_detected:
             alert_msg = f"Pest detected: {result.pest_class} (confidence {result.confidence:.2f})"
-            self._state.add_alert("WARNING", alert_msg, "pest_detection")
-            self._log_event("WARNING", "pest_detection", alert_msg)
+            self._state.add_alert("WARNING", alert_msg, source)
+            self._log_event("WARNING", source, alert_msg)
 
             relay_id = int(cfg.get("relay_id", 3))
             # Use the relay's own configured duration
@@ -434,7 +712,7 @@ class AutomationController:
                     duration = float(item.get("activation_duration_seconds", duration))
                     break
 
-            self._activate_pest_response(relay_id, duration, ts, "pest_detection")
+            self._activate_pest_response(relay_id, duration, ts, source)
 
     # ------------------------------------------------------------------
     # manual / external activation
@@ -487,6 +765,8 @@ class AutomationController:
     def emergency_stop(self, source: str = "dashboard") -> None:
         """Force all relays OFF immediately."""
         self._relays.all_off(reason="emergency_stop")
+        # Stop any sweep in progress; the worker retracts when it sees this.
+        self._pest_abort.set()
         for rid in self._relays.relay_ids():
             self._state.set_relay(rid, state="off")
         self._state.add_alert("CRITICAL", "Emergency stop — all relays forced OFF", source)
