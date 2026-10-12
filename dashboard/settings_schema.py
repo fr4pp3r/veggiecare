@@ -111,6 +111,20 @@ SETTINGS_GROUPS: list[dict[str, Any]] = [
                 "type": "slider",
                 "min": 0, "max": 30, "step": 1, "unit": "times", "factor": 1, "integer": True,
             },
+            {
+                "key": "stepper.wheel_diameter_in",
+                "label": "Camera wheel diameter",
+                "description": "Diameter of the wheel that extends the camera (inches). 512 steps rotates the stepper and wheel 90°.",
+                "type": "slider",
+                "min": 0.5, "max": 10, "step": 0.125, "unit": "in", "factor": 1, "integer": False,
+            },
+            {
+                "key": "stepper.max_sweep_steps",
+                "label": "Max sweep steps (3 ft extension)",
+                "description": "Computed step count for a full 3 ft camera sweep. 512 steps = 90° for both the stepper and the 2-1/8\" wheel. Not directly editable.",
+                "type": "text",
+                "readonly": True,
+            },
         ],
     },
     {
@@ -284,7 +298,18 @@ def get_config_payload(cfg: dict) -> dict[str, Any]:
         }
         for field in group["fields"]:
             entry = dict(field)
-            entry["value"] = read_path(cfg, field["key"])
+            key = field["key"]
+            if key == "stepper.max_sweep_steps":
+                # Computed: steps for 3 ft extension at current geometry.
+                stepper_cfg = cfg.get("stepper", {})
+                wheel = float(stepper_cfg.get("wheel_diameter_in", 2.125))
+                dist = float(stepper_cfg.get("extension_distance_in", 36.0))
+                steps_per_rev = int(stepper_cfg.get("steps_per_rev", 2048))
+                import math
+                revs = dist / (math.pi * wheel)
+                entry["value"] = int(round(revs * steps_per_rev))
+            else:
+                entry["value"] = read_path(cfg, key)
             out["fields"].append(entry)
         groups.append(out)
     return {"groups": groups}
@@ -311,6 +336,9 @@ def normalize_settings(
         field = _field_by_key(key)
         if field is None:
             errors.append(f"{key}: unknown setting")
+            continue
+        # Skip read-only/display fields
+        if field.get("readonly"):
             continue
         label = field["label"]
         ftype = field["type"]

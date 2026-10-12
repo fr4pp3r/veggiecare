@@ -601,6 +601,7 @@
     document.getElementById('view-overview').classList.toggle('hidden', view !== 'overview');
     document.getElementById('view-logs').classList.toggle('hidden', view !== 'logs');
     document.getElementById('view-settings').classList.toggle('hidden', view !== 'settings');
+    if (typeof updateBottomNav === 'function') updateBottomNav(view);
     if (view === 'logs') loadLogs();
     if (view === 'settings') loadSettings();
   }
@@ -1021,6 +1022,108 @@
   els.subTabs.forEach(t => t.addEventListener('click', () => switchLogTab(t.dataset.log)));
   els.logsRefresh.addEventListener('click', loadLogs);
   els.logsLimit.addEventListener('change', loadLogs);
+
+  // Mobile Navigation
+  const hamburgerBtn = document.getElementById('hamburger-btn');
+  const mobileNavDrawer = document.getElementById('mobile-nav-drawer');
+  const mobileNavOverlay = document.getElementById('mobile-nav-overlay');
+  const drawerClose = document.getElementById('drawer-close');
+
+  function openMobileNav() {
+    mobileNavDrawer.classList.add('open');
+    mobileNavOverlay.classList.add('open');
+    hamburgerBtn.setAttribute('aria-expanded', 'true');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeMobileNav() {
+    mobileNavDrawer.classList.remove('open');
+    mobileNavOverlay.classList.remove('open');
+    hamburgerBtn.setAttribute('aria-expanded', 'false');
+    document.body.style.overflow = '';
+  }
+
+  if (hamburgerBtn) {
+    hamburgerBtn.addEventListener('click', openMobileNav);
+    drawerClose.addEventListener('click', closeMobileNav);
+    mobileNavOverlay.addEventListener('click', closeMobileNav);
+
+    // Close drawer on escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && mobileNavDrawer.classList.contains('open')) {
+        closeMobileNav();
+      }
+    });
+
+    // Handle mobile nav item clicks
+    document.querySelectorAll('.mobile-nav-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.preventDefault();
+        const view = item.dataset.view;
+        if (view) {
+          switchView(view);
+        } else {
+          window.location.href = item.getAttribute('href');
+        }
+        closeMobileNav();
+      });
+    });
+  }
+
+  // Bottom Navigation
+  function updateBottomNav(view) {
+    document.querySelectorAll('.bottom-nav-item').forEach(item => {
+      item.classList.toggle('active', item.dataset.view === view);
+    });
+    document.querySelectorAll('.mobile-nav-item').forEach(item => {
+      item.classList.toggle('active', item.dataset.view === view);
+    });
+  }
+
+  document.querySelectorAll('.bottom-nav-item').forEach(item => {
+    item.addEventListener('click', (e) => {
+      e.preventDefault();
+      const view = item.dataset.view;
+      if (view) {
+        switchView(view);
+      } else {
+        window.location.href = item.getAttribute('href');
+      }
+    });
+  });
+
+  // Collapsible Cards
+  document.querySelectorAll('.card.collapsible').forEach(card => {
+    const header = card.querySelector('.card-header');
+    const body = card.querySelector('.card-body');
+    if (!header || !body) return;
+
+    // Set initial max-height for transition
+    body.style.maxHeight = body.scrollHeight + 'px';
+
+    header.addEventListener('click', (e) => {
+      // Don't toggle if clicking a button inside header
+      if (e.target.closest('button')) return;
+
+      card.classList.toggle('collapsed');
+      if (card.classList.contains('collapsed')) {
+        body.style.maxHeight = '0';
+      } else {
+        body.style.maxHeight = body.scrollHeight + 'px';
+      }
+    });
+  });
+
+  // Update collapsible card max-heights on resize
+  let resizeTimeout;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+      document.querySelectorAll('.card.collapsible:not(.collapsed) .card-body').forEach(body => {
+        body.style.maxHeight = body.scrollHeight + 'px';
+      });
+    }, 150);
+  });
 
   // Start
   poll();

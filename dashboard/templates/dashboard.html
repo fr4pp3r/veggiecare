@@ -12,6 +12,9 @@
     <div class="header-meta">
       <span id="uptime">Starting…</span>
       <span id="mode-badge" class="badge"></span>
+      <button class="hamburger-btn" id="hamburger-btn" aria-label="Open menu" aria-expanded="false">
+        <svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M2 4h16v2H2V4zm0 5h16v2H2V9zm0 5h16v2H2v-2z"/></svg>
+      </button>
     </div>
   </header>
 
@@ -23,173 +26,246 @@
     <a class="nav-tab nav-tab-link" href="/database">Database</a>
   </nav>
 
+  <!-- Mobile Navigation Drawer -->
+  <div class="mobile-nav-overlay" id="mobile-nav-overlay"></div>
+  <nav class="mobile-nav-drawer" id="mobile-nav-drawer" aria-label="Mobile navigation">
+    <div class="drawer-header">
+      <h2>Menu</h2>
+      <button class="drawer-close" id="drawer-close" aria-label="Close menu">&times;</button>
+    </div>
+    <div class="mobile-nav-items">
+      <a href="/" class="mobile-nav-item active" data-view="overview">
+        <svg viewBox="0 0 20 20"><path d="M3 3h6v6H3V3zm8 0h6v6h-6V3zM3 11h6v6H3v-6zm8 0h6v6h-6v-6z"/></svg>
+        Overview
+      </a>
+      <a href="/logs" class="mobile-nav-item" data-view="logs">
+        <svg viewBox="0 0 20 20"><path d="M4 2h12v2H4V2zm0 4h12v2H4V6zm0 4h12v2H4v-2zm0 4h8v2H4v-2z"/></svg>
+        Logs
+      </a>
+      <a href="/settings" class="mobile-nav-item" data-view="settings">
+        <svg viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm0 2a6 6 0 110 12 6 6 0 010-12zm0 2a4 4 0 100 8 4 4 0 000-8z"/></svg>
+        Settings
+      </a>
+      <a href="/camera" class="mobile-nav-item">
+        <svg viewBox="0 0 20 20"><path d="M7 2h6l2 2h4v12H1V4h4l2-2zm0 2H3v10h14V6h-4l-2-2H7z"/></svg>
+        Camera
+      </a>
+      <a href="/database" class="mobile-nav-item">
+        <svg viewBox="0 0 20 20"><path d="M3 2h14v2H3V2zm0 4h14v12H3V6zm2 2v8h10V8H5z"/></svg>
+        Database
+      </a>
+    </div>
+  </nav>
+
+  <!-- Mobile Bottom Navigation -->
+  <nav class="bottom-nav" aria-label="Quick navigation">
+    <div class="bottom-nav-items">
+      <a href="/" class="bottom-nav-item active" data-view="overview">
+        <svg viewBox="0 0 20 20"><path d="M3 3h6v6H3V3zm8 0h6v6h-6V3zM3 11h6v6H3v-6zm8 0h6v6h-6v-6z"/></svg>
+        Home
+      </a>
+      <a href="/logs" class="bottom-nav-item" data-view="logs">
+        <svg viewBox="0 0 20 20"><path d="M4 2h12v2H4V2zm0 4h12v2H4V6zm0 4h12v2H4v-2zm0 4h8v2H4v-2z"/></svg>
+        Logs
+      </a>
+      <a href="/settings" class="bottom-nav-item" data-view="settings">
+        <svg viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm0 2a6 6 0 110 12 6 6 0 010-12zm0 2a4 4 0 100 8 4 4 0 000-8z"/></svg>
+        Settings
+      </a>
+      <a href="/camera" class="bottom-nav-item">
+        <svg viewBox="0 0 20 20"><path d="M7 2h6l2 2h4v12H1V4h4l2-2zm0 2H3v10h14V6h-4l-2-2H7z"/></svg>
+        Camera
+      </a>
+      <a href="/database" class="bottom-nav-item">
+        <svg viewBox="0 0 20 20"><path d="M3 2h14v2H3V2zm0 4h14v12H3V6zm2 2v8h10V8H5z"/></svg>
+        Data
+      </a>
+    </div>
+  </nav>
+
   <main class="container">
     <div id="view-overview">
       <section id="alerts" class="card alerts-card" aria-live="polite">
-      <header class="card-header">
-        <h2>Alerts</h2>
-        <button id="clear-alerts" class="btn btn-ghost btn-sm" aria-label="Clear alerts">Clear</button>
-      </header>
-      <div class="alerts-list" role="log"></div>
-    </section>
-
-    <div class="grid">
-      <section id="npk" class="card">
-        <header class="card-header"><h2>NPK Sensor</h2></header>
-        <div class="sensor-grid">
-          <div class="sensor-item" data-nutrient="nitrogen">
-            <span class="label">Nitrogen (N)</span>
-            <span class="value" id="npk-n">—</span>
-            <span class="unit">mg/kg</span>
-            <span class="threshold" id="npk-th-n">threshold: —</span>
-            <span class="status" id="npk-st-n"></span>
-          </div>
-          <div class="sensor-item" data-nutrient="phosphorus">
-            <span class="label">Phosphorus (P)</span>
-            <span class="value" id="npk-p">—</span>
-            <span class="unit">mg/kg</span>
-            <span class="threshold" id="npk-th-p">threshold: —</span>
-            <span class="status" id="npk-st-p"></span>
-          </div>
-          <div class="sensor-item" data-nutrient="potassium">
-            <span class="label">Potassium (K)</span>
-            <span class="value" id="npk-k">—</span>
-            <span class="unit">mg/kg</span>
-            <span class="threshold" id="npk-th-k">threshold: —</span>
-            <span class="status" id="npk-st-k"></span>
-          </div>
+        <header class="card-header">
+          <h2>Alerts</h2>
+          <button id="clear-alerts" class="btn btn-ghost btn-sm" aria-label="Clear alerts">Clear</button>
+        </header>
+        <div class="card-body">
+          <div class="alerts-list" role="log"></div>
         </div>
-        <div class="card-actions">
-          <button id="btn-relay1" class="btn btn-primary" disabled>Activate Fertilizer (Relay 1)</button>
-          <span class="hint">Manual only — activates for <span id="r1-dur">—</span>s</span>
-        </div>
-        <p class="meta" id="npk-meta">Last reading: —</p>
       </section>
 
-      <section id="recommendation" class="card">
-        <header class="card-header"><h2>Fertilizer Recommendation</h2></header>
-        <div id="rec-status" class="rec-status">
-          <div class="rec-empty">No recommendation at this time. All nutrients are within target ranges.</div>
-          <div class="rec-active hidden">
-            <div class="rec-header">
-              <span class="rec-priority" id="rec-priority"></span>
-              <span class="rec-model" id="rec-model"></span>
+      <div class="grid">
+        <section id="moisture" class="card collapsible">
+          <header class="card-header"><h2>Soil Moisture</h2></header>
+          <div class="card-body">
+            <div class="sensor-main">
+              <span class="label">Moisture</span>
+              <span class="value large" id="moist-val">—</span>
+              <span class="unit">%</span>
             </div>
-            <div class="rec-main">
-              <h3 id="rec-fertilizer-name">—</h3>
-              <p class="rec-dosage">Dosage: <strong id="rec-dosage">—</strong> g per 10L water</p>
-              <p class="rec-reasoning" id="rec-reasoning">—</p>
+            <div class="threshold-bar">
+              <div class="bar-bg">
+                <div class="bar-fill" id="moist-bar"></div>
+                <div class="bar-threshold" id="moist-th-line"></div>
+              </div>
+              <div class="threshold-labels">
+                <span id="moist-th-label">Threshold: —%</span>
+                <span id="moist-status" class="status"></span>
+              </div>
             </div>
-            <div class="rec-deficits" id="rec-deficits"></div>
+            <p class="meta" id="moist-meta">Last reading: — | Last watering: —</p>
+          </div>
+        </section>
+
+        <section id="npk" class="card collapsible">
+          <header class="card-header"><h2>NPK Sensor</h2></header>
+          <div class="card-body">
+            <div class="sensor-grid">
+              <div class="sensor-item" data-nutrient="nitrogen">
+                <span class="label">Nitrogen (N)</span>
+                <span class="value" id="npk-n">—</span>
+                <span class="unit">mg/kg</span>
+                <span class="threshold" id="npk-th-n">threshold: —</span>
+                <span class="status" id="npk-st-n"></span>
+              </div>
+              <div class="sensor-item" data-nutrient="phosphorus">
+                <span class="label">Phosphorus (P)</span>
+                <span class="value" id="npk-p">—</span>
+                <span class="unit">mg/kg</span>
+                <span class="threshold" id="npk-th-p">threshold: —</span>
+                <span class="status" id="npk-st-p"></span>
+              </div>
+              <div class="sensor-item" data-nutrient="potassium">
+                <span class="label">Potassium (K)</span>
+                <span class="value" id="npk-k">—</span>
+                <span class="unit">mg/kg</span>
+                <span class="threshold" id="npk-th-k">threshold: —</span>
+                <span class="status" id="npk-st-k"></span>
+              </div>
+            </div>
             <div class="card-actions">
-              <button id="btn-apply-fertilizer" class="btn btn-success" type="button">Apply Fertilizer (Relay 1)</button>
-              <span class="hint">Activates Relay 1 (fertilizer) for <span id="rec-dur">—</span>s</span>
+              <button id="btn-relay1" class="btn btn-primary" disabled>Activate Fertilizer (Relay 1)</button>
+              <span class="hint">Manual only — activates for <span id="r1-dur">—</span>s</span>
             </div>
-            <p class="meta" id="rec-meta">Generated: —</p>
+            <p class="meta" id="npk-meta">Last reading: —</p>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section id="moisture" class="card">
-        <header class="card-header"><h2>Soil Moisture</h2></header>
-        <div class="sensor-main">
-          <span class="label">Moisture</span>
-          <span class="value large" id="moist-val">—</span>
-          <span class="unit">%</span>
-        </div>
-        <div class="threshold-bar">
-          <div class="bar-bg">
-            <div class="bar-fill" id="moist-bar"></div>
-            <div class="bar-threshold" id="moist-th-line"></div>
+        <section id="relays" class="card collapsible">
+          <header class="card-header"><h2>Relays</h2></header>
+          <div class="card-body">
+            <div class="relay-grid" id="relay-grid"></div>
+            <div class="card-actions">
+              <button id="btn-emergency" class="btn btn-danger">EMERGENCY STOP — All Relays OFF</button>
+            </div>
           </div>
-          <div class="threshold-labels">
-            <span id="moist-th-label">Threshold: —%</span>
-            <span id="moist-status" class="status"></span>
+        </section>
+
+        <section id="pest" class="card collapsible">
+          <header class="card-header"><h2>Pest Detection</h2></header>
+          <div class="card-body">
+            <div id="pest-status" class="pest-status">Not configured / Camera not installed</div>
+            <div id="pest-details" class="pest-details hidden"></div>
+            <div class="usage-info">
+              <span>Monthly pest responses: <strong id="pest-used">—</strong> / <strong id="pest-max">—</strong></span>
+              <span id="pest-remaining" class="remaining">Remaining: —</span>
+            </div>
+            <div class="card-actions hidden" id="pest-scan-actions">
+              <button id="btn-scan-stepper" class="btn btn-secondary">Force Pest monitor with stepper</button>
+              <button id="btn-scan-camera" class="btn btn-secondary">Force Pest monitor camera only</button>
+            </div>
+            <div class="card-actions" id="pest-sim-controls" style="display:none;">
+              <label>Pest class: <select id="sim-pest-class">
+                <option value="aphid">Aphid</option>
+                <option value="caterpillar">Caterpillar</option>
+                <option value="fungus">Fungus</option>
+              </select></label>
+              <label>Confidence: <input type="range" id="sim-confidence" min="0.5" max="1" step="0.01" value="0.85"><span id="sim-conf-val">0.85</span></label>
+              <button id="btn-sim-pest" class="btn btn-secondary">Simulate Detection</button>
+            </div>
           </div>
-        </div>
-        <p class="meta" id="moist-meta">Last reading: — | Last watering: —</p>
-      </section>
+        </section>
 
-      <section id="relays" class="card">
-        <header class="card-header"><h2>Relays</h2></header>
-        <div class="relay-grid" id="relay-grid"></div>
-        <div class="card-actions">
-          <button id="btn-emergency" class="btn btn-danger">EMERGENCY STOP — All Relays OFF</button>
-        </div>
-      </section>
-
-      <section id="pest" class="card">
-        <header class="card-header"><h2>Pest Detection</h2></header>
-        <div id="pest-status" class="pest-status">Not configured / Camera not installed</div>
-        <div id="pest-details" class="pest-details hidden"></div>
-        <div class="usage-info">
-          <span>Monthly pest responses: <strong id="pest-used">—</strong> / <strong id="pest-max">—</strong></span>
-          <span id="pest-remaining" class="remaining">Remaining: —</span>
-        </div>
-        <div class="card-actions hidden" id="pest-scan-actions">
-          <button id="btn-scan-stepper" class="btn btn-secondary">Force Pest monitor with stepper</button>
-          <button id="btn-scan-camera" class="btn btn-secondary">Force Pest monitor camera only</button>
-        </div>
-        <div class="card-actions" id="pest-sim-controls" style="display:none;">
-          <label>Pest class: <select id="sim-pest-class">
-            <option value="aphid">Aphid</option>
-            <option value="caterpillar">Caterpillar</option>
-            <option value="fungus">Fungus</option>
-          </select></label>
-          <label>Confidence: <input type="range" id="sim-confidence" min="0.5" max="1" step="0.01" value="0.85"><span id="sim-conf-val">0.85</span></label>
-          <button id="btn-sim-pest" class="btn btn-secondary">Simulate Detection</button>
-        </div>
-      </section>
-
-      <section id="system" class="card">
-        <header class="card-header"><h2>System Status</h2></header>
-        <dl class="sys-grid">
-          <dt>Uptime</dt><dd id="sys-uptime">—</dd>
-          <dt>Database</dt><dd id="sys-db"><span class="status"></span></dd>
-          <dt>NPK Sensor</dt><dd id="sys-npk"><span class="status"></span></dd>
-          <dt>Moisture Sensor</dt><dd id="sys-moist"><span class="status"></span></dd>
-          <dt>Camera</dt><dd id="sys-cam"><span class="status"></span></dd>
-          <dt>Pest Model</dt><dd id="sys-pest"><span class="status"></span></dd>
-          <dt>Automation</dt><dd id="sys-auto"><span class="status"></span></dd>
-        </dl>
-        <div class="card-actions">
-          <button id="btn-pause" class="btn btn-secondary">Pause Automation</button>
-          <button id="btn-resume" class="btn btn-primary hidden">Resume Automation</button>
-        </div>
-      </section>
-
-      <section id="system-test" class="card">
-        <header class="card-header"><h2>System Test</h2></header>
-        <p class="hint">Run a full diagnostic test of all hardware modules. This will briefly activate each relay, read sensors, capture a camera frame, and move the stepper motor.</p>
-        <div class="test-options">
-          <label><input type="checkbox" id="test-relays" checked> Relays</label>
-          <label><input type="checkbox" id="test-sensors" checked> Sensors (NPK, Moisture)</label>
-          <label><input type="checkbox" id="test-camera" checked> Camera</label>
-          <label><input type="checkbox" id="test-stepper" checked> Stepper</label>
-        </div>
-        <div class="card-actions">
-          <button id="btn-system-test" class="btn btn-primary" type="button">Run System Test</button>
-        </div>
-
-        <h3 style="margin: 1rem 1rem 0.5rem; font-size: 0.875rem;">Quick Stepper Test</h3>
-        <div class="stepper-test-controls" style="padding: 0 1rem 1rem;">
-          <div class="test-options" style="margin-bottom: 0.5rem;">
-            <label>Steps: <input type="number" id="stepper-steps" value="512" min="1" max="2048" step="64" style="width: 80px; margin-left: 0.5rem;"></label>
-            <label>Delay (s): <input type="number" id="stepper-delay" value="0.003" min="0.001" max="0.01" step="0.001" style="width: 80px; margin-left: 0.5rem;"></label>
+        <section id="recommendation" class="card collapsible">
+          <header class="card-header"><h2>Fertilizer Recommendation</h2></header>
+          <div class="card-body">
+            <div id="rec-status" class="rec-status">
+              <div class="rec-empty">No recommendation at this time. All nutrients are within target ranges.</div>
+              <div class="rec-active hidden">
+                <div class="rec-header">
+                  <span class="rec-priority" id="rec-priority"></span>
+                  <span class="rec-model" id="rec-model"></span>
+                </div>
+                <div class="rec-main">
+                  <h3 id="rec-fertilizer-name">—</h3>
+                  <p class="rec-dosage">Dosage: <strong id="rec-dosage">—</strong> g per 10L water</p>
+                  <p class="rec-reasoning" id="rec-reasoning">—</p>
+                </div>
+                <div class="rec-deficits" id="rec-deficits"></div>
+                <div class="card-actions">
+                  <button id="btn-apply-fertilizer" class="btn btn-success" type="button">Apply Fertilizer (Relay 1)</button>
+                  <span class="hint">Activates Relay 1 (fertilizer) for <span id="rec-dur">—</span>s</span>
+                </div>
+                <p class="meta" id="rec-meta">Generated: —</p>
+              </div>
+            </div>
           </div>
-          <div class="card-actions">
-            <button id="btn-stepper-test" class="btn btn-secondary" type="button">Test Stepper (Forward + Back)</button>
-          </div>
-          <div id="stepper-test-result" class="test-result hidden" role="region" aria-live="polite" style="margin-top: 0.5rem;"></div>
-        </div>
+        </section>
 
-        <div id="system-test-results" class="test-results hidden" role="region" aria-live="polite"></div>
-      </section>
+        <section id="system" class="card collapsible">
+          <header class="card-header"><h2>System Status</h2></header>
+          <div class="card-body">
+            <dl class="sys-grid">
+              <dt>Uptime</dt><dd id="sys-uptime">—</dd>
+              <dt>Database</dt><dd id="sys-db"><span class="status"></span></dd>
+              <dt>NPK Sensor</dt><dd id="sys-npk"><span class="status"></span></dd>
+              <dt>Moisture Sensor</dt><dd id="sys-moist"><span class="status"></span></dd>
+              <dt>Camera</dt><dd id="sys-cam"><span class="status"></span></dd>
+              <dt>Pest Model</dt><dd id="sys-pest"><span class="status"></span></dd>
+              <dt>Automation</dt><dd id="sys-auto"><span class="status"></span></dd>
+            </dl>
+            <div class="card-actions">
+              <button id="btn-pause" class="btn btn-secondary">Pause Automation</button>
+              <button id="btn-resume" class="btn btn-primary hidden">Resume Automation</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="system-test" class="card collapsible">
+          <header class="card-header"><h2>System Test</h2></header>
+          <div class="card-body">
+            <p class="hint">Run a full diagnostic test of all hardware modules. This will briefly activate each relay, read sensors, capture a camera frame, and move the stepper motor.</p>
+            <div class="test-options">
+              <label><input type="checkbox" id="test-relays" checked> Relays</label>
+              <label><input type="checkbox" id="test-sensors" checked> Sensors (NPK, Moisture)</label>
+              <label><input type="checkbox" id="test-camera" checked> Camera</label>
+              <label><input type="checkbox" id="test-stepper" checked> Stepper</label>
+            </div>
+            <div class="card-actions">
+              <button id="btn-system-test" class="btn btn-primary" type="button">Run System Test</button>
+            </div>
+
+            <h3 style="margin: 1rem 1rem 0.5rem; font-size: 0.875rem;">Quick Stepper Test</h3>
+            <div class="stepper-test-controls" style="padding: 0 1rem 1rem;">
+              <div class="test-options" style="margin-bottom: 0.5rem;">
+                <label>Steps: <input type="number" id="stepper-steps" value="512" min="1" max="2048" step="64" style="width: 80px; margin-left: 0.5rem;"></label>
+                <label>Delay (s): <input type="number" id="stepper-delay" value="0.003" min="0.001" max="0.01" step="0.001" style="width: 80px; margin-left: 0.5rem;"></label>
+              </div>
+              <div class="card-actions">
+                <button id="btn-stepper-test" class="btn btn-secondary" type="button">Test Stepper (Forward + Back)</button>
+              </div>
+              <div id="stepper-test-result" class="test-result hidden" role="region" aria-live="polite" style="margin-top: 0.5rem;"></div>
+            </div>
+
+            <div id="system-test-results" class="test-results hidden" role="region" aria-live="polite"></div>
+          </div>
+        </section>
       </div>
     </div>
 
     <div id="view-logs" class="hidden">
-      <section id="logs" class="card">
+      <section id="logs" class="card collapsible">
         <header class="card-header">
           <h2>Sensor Logs</h2>
           <div class="logs-toolbar">
@@ -204,16 +280,18 @@
             <button id="logs-refresh" class="btn btn-ghost btn-sm" type="button">Refresh</button>
           </div>
         </header>
-        <div class="sub-tabs" role="tablist">
-          <button class="sub-tab active" data-log="readings" type="button">Readings</button>
-          <button class="sub-tab" data-log="activations" type="button">Activations</button>
-          <button class="sub-tab" data-log="events" type="button">Events</button>
-          <button class="sub-tab" data-log="detections" type="button">Detections</button>
+        <div class="card-body">
+          <div class="sub-tabs" role="tablist">
+            <button class="sub-tab active" data-log="readings" type="button">Readings</button>
+            <button class="sub-tab" data-log="activations" type="button">Activations</button>
+            <button class="sub-tab" data-log="events" type="button">Events</button>
+            <button class="sub-tab" data-log="detections" type="button">Detections</button>
+          </div>
+          <div class="log-panel" id="log-readings" role="region"></div>
+          <div class="log-panel hidden" id="log-activations" role="region"></div>
+          <div class="log-panel hidden" id="log-events" role="region"></div>
+          <div class="log-panel hidden" id="log-detections" role="region"></div>
         </div>
-        <div class="log-panel" id="log-readings" role="region"></div>
-        <div class="log-panel hidden" id="log-activations" role="region"></div>
-        <div class="log-panel hidden" id="log-events" role="region"></div>
-        <div class="log-panel hidden" id="log-detections" role="region"></div>
       </section>
     </div>
 
