@@ -148,6 +148,8 @@
       addAlert('error', 'Dashboard', `Failed to fetch state: ${e.message}`);
     }
     if (activeView === 'logs') loadLogs();
+    // Refresh collapsible card heights after content updates
+    refreshCollapsibleCards();
   }
 
   // Render
@@ -510,6 +512,9 @@
     det.status === 'fulfilled'
       ? renderDetections(det.value)
       : renderLogError(els.logPanels.detections, 'Failed to load detections');
+
+    // Refresh collapsible card heights after log content updates
+    refreshCollapsibleCards();
   }
 
   function mergeReadings(npkRows, moistRows) {
@@ -659,7 +664,7 @@
       const section = document.createElement('section');
       section.className = 'card settings-group';
       const header = document.createElement('header');
-      header.className = 'card-header';
+      header.className = 'card-header group-header';
       const h2 = document.createElement('h2');
       h2.textContent = group.title;
       header.appendChild(h2);
@@ -671,7 +676,7 @@
         section.appendChild(desc);
       }
       const list = document.createElement('div');
-      list.className = 'setting-list';
+      list.className = 'setting-list group-body';
       group.fields.forEach(field => list.appendChild(buildFieldRow(field)));
       section.appendChild(list);
       els.settingsGroups.appendChild(section);
@@ -683,6 +688,9 @@
     els.restartStatus.textContent = data.restart_supported
       ? 'Restart switches all pumps off for about 30 seconds.'
       : 'Restart is only available when running as a systemd service.';
+    // Re-initialize collapsibles for newly created settings groups
+    initCollapsibleCards();
+    refreshCollapsibleCards();
   }
 
   function buildFieldRow(field) {
@@ -929,6 +937,7 @@
     } finally {
       btn.disabled = false;
       btn.textContent = 'Run System Test';
+      refreshCollapsibleCards();
     }
   }
 
@@ -987,6 +996,7 @@
     } finally {
       btn.disabled = false;
       btn.textContent = 'Test Stepper (Forward + Back)';
+      refreshCollapsibleCards();
     }
   }
 
@@ -1092,36 +1102,58 @@
     });
   });
 
-  // Collapsible Cards
-  document.querySelectorAll('.card.collapsible').forEach(card => {
-    const header = card.querySelector('.card-header');
-    const body = card.querySelector('.card-body');
-    if (!header || !body) return;
-
-    // Set initial max-height for transition
-    body.style.maxHeight = body.scrollHeight + 'px';
-
-    header.addEventListener('click', (e) => {
-      // Don't toggle if clicking a button inside header
-      if (e.target.closest('button')) return;
-
-      card.classList.toggle('collapsed');
-      if (card.classList.contains('collapsed')) {
-        body.style.maxHeight = '0';
-      } else {
-        body.style.maxHeight = body.scrollHeight + 'px';
-      }
+  // Collapsible Cards & Settings Groups
+  function refreshCollapsibleCards() {
+    document.querySelectorAll('.card.collapsible:not(.collapsed) .card-body').forEach(body => {
+      body.style.maxHeight = body.scrollHeight + 'px';
     });
-  });
+    document.querySelectorAll('.settings-group:not(.collapsed) .group-body').forEach(body => {
+      body.style.maxHeight = body.scrollHeight + 'px';
+    });
+  }
+
+  function initCollapsibleCards() {
+    // Card collapsibles
+    document.querySelectorAll('.card.collapsible').forEach(card => {
+      const header = card.querySelector('.card-header');
+      const body = card.querySelector('.card-body');
+      if (!header || !body) return;
+
+      body.style.maxHeight = body.scrollHeight + 'px';
+
+      header.addEventListener('click', (e) => {
+        if (e.target.closest('button')) return;
+        card.classList.toggle('collapsed');
+        body.style.maxHeight = card.classList.contains('collapsed') ? '0' : body.scrollHeight + 'px';
+      });
+    });
+
+    // Settings group collapsibles
+    document.querySelectorAll('.settings-group').forEach(group => {
+      const header = group.querySelector('.group-header');
+      const body = group.querySelector('.group-body');
+      if (!header || !body) return;
+
+      // Ensure max-height is set for transition
+      body.style.maxHeight = body.scrollHeight + 'px';
+
+      header.addEventListener('click', (e) => {
+        // Don't toggle if clicking interactive elements inside header
+        if (e.target.closest('button, input, select, label, a')) return;
+        group.classList.toggle('collapsed');
+        body.style.maxHeight = group.classList.contains('collapsed') ? '0' : body.scrollHeight + 'px';
+      });
+    });
+  }
+
+  initCollapsibleCards();
 
   // Update collapsible card max-heights on resize
   let resizeTimeout;
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimeout);
     resizeTimeout = setTimeout(() => {
-      document.querySelectorAll('.card.collapsible:not(.collapsed) .card-body').forEach(body => {
-        body.style.maxHeight = body.scrollHeight + 'px';
-      });
+      refreshCollapsibleCards();
     }, 150);
   });
 

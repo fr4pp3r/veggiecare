@@ -660,6 +660,65 @@ def api_database_tables():
         return jsonify({"ok": False, "error": str(exc)}), 500
 
 
+@bp.route("/api/database/table/<table_name>")
+def api_database_table(table_name: str):
+    """View table data with pagination."""
+    db = getattr(current_app, "veggiecare_db", None)
+    if db is None:
+        return jsonify({"ok": False, "error": "Database not available"}), 503
+
+    # Validate table name to prevent SQL injection
+    valid_tables = {
+        "npk_readings",
+        "moisture_readings",
+        "relay_activations",
+        "blocked_activations",
+        "pest_detections",
+        "npk_recommendations",
+        "system_events",
+        "config_changes",
+    }
+    if table_name not in valid_tables:
+        return jsonify({"ok": False, "error": "Invalid table name"}), 400
+
+    try:
+        page = request.args.get("page", 1, type=int)
+        per_page = request.args.get("per_page", 50, type=int)
+        per_page = max(1, min(per_page, 500))  # Clamp to reasonable range
+        offset = (page - 1) * per_page
+
+        # Get total count
+        count_row = db._query(f"SELECT COUNT(*) AS n FROM {table_name}")
+        total = int(count_row[0]["n"]) if count_row else 0
+
+        # Get paginated data
+        rows = db._query(
+            f"SELECT * FROM {table_name} ORDER BY id DESC LIMIT ? OFFSET ?",
+            (per_page, offset),
+        )
+        data = [dict(r) for r in rows]
+
+        # Get column names
+        cols_row = db._query(f"PRAGMA table_info({table_name})")
+        columns = [r["name"] for r in cols_row] if cols_row else []
+
+        return jsonify({
+            "ok": True,
+            "table": table_name,
+            "columns": columns,
+            "data": data,
+            "pagination": {
+                "page": page,
+                "per_page": per_page,
+                "total": total,
+                "total_pages": (total + per_page - 1) // per_page if total else 1,
+            },
+        })
+    except Exception as exc:
+        log.exception("Database table view failed for %s", table_name)
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
 # ======================================================================
 # Page routes - Database
 # ======================================================================

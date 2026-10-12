@@ -40,6 +40,26 @@
         </div>
       </div>
     </section>
+
+    <!-- Table Viewer (hidden until a table is selected) -->
+    <section id="table-viewer" class="card hidden">
+      <header class="card-header">
+        <h2 id="table-viewer-title">Table: <span id="table-name"></span></h2>
+        <div class="table-viewer-toolbar">
+          <select id="table-page-size" class="settings-select" aria-label="Rows per page">
+            <option value="25">25 rows</option>
+            <option value="50" selected>50 rows</option>
+            <option value="100">100 rows</option>
+            <option value="200">200 rows</option>
+          </select>
+        </div>
+      </header>
+      <div class="card-body">
+        <div id="table-viewer-content">
+          <!-- Table content rendered by JS -->
+        </div>
+      </div>
+    </section>
   </main>
 
   <script src="/static/database.js"></script>
