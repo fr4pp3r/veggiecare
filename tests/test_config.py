@@ -176,3 +176,74 @@ def test_save_user_config_updates_list_item(tmp_path):
         saved = yaml.safe_load(fh)
     assert saved["relays"]["items"][1]["activation_duration_seconds"] == 60
     assert saved["relays"]["items"][0]["activation_duration_seconds"] == 120
+
+
+# ----------------------------------------------------------------------
+# Closed-loop watering policy keys
+# ----------------------------------------------------------------------
+
+def _set_soil_moisture_key(temp_config, key, value):
+    import yaml
+    with open(temp_config) as f:
+        data = yaml.safe_load(f)
+    data["soil_moisture"][key] = value
+    with open(temp_config, "w") as f:
+        yaml.safe_dump(data, f)
+
+
+def test_soil_moisture_accepts_new_closed_loop_keys(temp_config):
+    import yaml
+    with open(temp_config) as f:
+        data = yaml.safe_load(f)
+    data["soil_moisture"]["hysteresis"] = 5
+    data["soil_moisture"]["response_rise_percent"] = 2.0
+    data["soil_moisture"]["max_consecutive_non_responses"] = 3
+    data["soil_moisture"]["max_watering_seconds_per_day"] = 1800
+    with open(temp_config, "w") as f:
+        yaml.safe_dump(data, f)
+
+    cfg = load_config(temp_config)
+    assert cfg["soil_moisture"]["hysteresis"] == 5
+    assert cfg["soil_moisture"]["response_rise_percent"] == 2.0
+    assert cfg["soil_moisture"]["max_consecutive_non_responses"] == 3
+    assert cfg["soil_moisture"]["max_watering_seconds_per_day"] == 1800
+
+
+def test_soil_moisture_rejects_negative_hysteresis(temp_config):
+    _set_soil_moisture_key(temp_config, "hysteresis", -1)
+    with pytest.raises(ConfigError) as exc:
+        load_config(temp_config)
+    assert "hysteresis" in str(exc.value)
+
+
+def test_soil_moisture_rejects_response_rise_percent_over_100(temp_config):
+    _set_soil_moisture_key(temp_config, "response_rise_percent", 200)
+    with pytest.raises(ConfigError) as exc:
+        load_config(temp_config)
+    assert "response_rise_percent" in str(exc.value)
+
+
+def test_soil_moisture_rejects_zero_max_consecutive_non_responses(temp_config):
+    _set_soil_moisture_key(temp_config, "max_consecutive_non_responses", 0)
+    with pytest.raises(ConfigError) as exc:
+        load_config(temp_config)
+    assert "max_consecutive_non_responses" in str(exc.value)
+
+
+def test_soil_moisture_rejects_zero_max_watering_seconds_per_day(temp_config):
+    _set_soil_moisture_key(temp_config, "max_watering_seconds_per_day", 0)
+    with pytest.raises(ConfigError) as exc:
+        load_config(temp_config)
+    assert "max_watering_seconds_per_day" in str(exc.value)
+
+
+def test_soil_moisture_validates_without_new_closed_loop_keys(temp_config):
+    import yaml
+    with open(temp_config) as f:
+        data = yaml.safe_load(f)
+    for key in ("hysteresis", "response_rise_percent",
+                "max_consecutive_non_responses", "max_watering_seconds_per_day"):
+        data["soil_moisture"].pop(key, None)
+    with open(temp_config, "w") as f:
+        yaml.safe_dump(data, f)
+    load_config(temp_config)

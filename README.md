@@ -327,3 +327,93 @@ watch -n 1 free -h
 ```
 
 ## Configuration
+
+All tunable settings live in `config/config.yaml` (validated on load, reject on any error). Edit the YAML and restart the app (or systemd service) to apply changes. The dashboard Settings page also writes back to this file preserving comments.
+
+### Key sections
+
+#### Soil Moisture & Watering (closed-loop)
+```yaml
+soil_moisture:
+  enabled: true
+  spi_bus: 0
+  spi_device: 0
+  channel: 0
+  adc_max: 1023
+  vref: 3.3
+  dry_adc: 500          # calibration: ADC reading in dry air
+  wet_adc: 50           # calibration: ADC reading in water
+  samples: 20           # readings averaged per measurement
+  read_interval_seconds: 30
+  log_interval_seconds: 300
+  threshold: 30         # watering triggers below this %
+  relay_id: 2
+  # Closed-loop watering policy
+  hysteresis: 5                      # once "below threshold", moisture must reach threshold+hysteresis to clear
+  watering_cooldown_seconds: 900     # settle + response-observation window (15 min)
+  response_rise_percent: 2.0         # moisture must rise this much to count as a response
+  max_consecutive_non_responses: 3   # waterings with no measurable rise before fault
+  max_watering_seconds_per_day: 1800 # hard daily cap (30 min/day)
+  relay_activation_duration_seconds: 120
+  simulated:
+    moisture: 45
+```
+
+#### Pest Detection
+```yaml
+pest_detection:
+  enabled: true
+  detector: yolov11n
+  confidence_threshold: 0.70
+  relay_id: 3
+  relay_activation_duration_seconds: 120
+  max_activations_per_month: 2
+  capture_interval_seconds: 300
+  model_path: runs/veggiecare_cls_v1/weights/best.pt
+  pest_classes:
+    - aphids
+    - armyworm
+    - beetle
+    - bollworm
+    - grasshopper
+    - mites
+    - mosquito
+    - sawfly
+    - stem_borer
+```
+
+#### NPK (RS485 Modbus)
+```yaml
+npk:
+  enabled: true
+  device_path: /dev/ttyUSB0
+  slave_id: 1
+  baudrate: 4800
+  read_interval_seconds: 300
+  log_interval_seconds: 900
+  thresholds:
+    nitrogen: 20
+    phosphorus: 20
+    potassium: 20
+  simulated:
+    nitrogen: 25
+    phosphorus: 30
+    potassium: 35
+```
+
+#### System
+```yaml
+system:
+  name: VeggieCare
+  simulate_hardware: false
+  timezone: Asia/Manila
+  tick_seconds: 1.0
+```
+
+### Configuration validation
+
+Run `python -c "from config.config import load_config; load_config('config/config.yaml')"` — it prints nothing on success, or a detailed error list on failure.
+
+### Settings page
+
+The dashboard Settings tab (`http://<pi>:5000/settings`) provides sliders/toggles for all watering, pest, and relay parameters. It uses `ruamel.yaml` to preserve your YAML comments when saving.

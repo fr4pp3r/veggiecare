@@ -43,6 +43,20 @@ SETTINGS_GROUPS: list[dict[str, Any]] = [
                 "type": "slider",
                 "min": 5, "max": 240, "step": 5, "unit": "min", "factor": 60, "integer": True,
             },
+            {
+                "key": "soil_moisture.hysteresis",
+                "label": "Threshold buffer",
+                "description": "After watering, the soil must rise this far above the threshold before the system considers it recovered. This stops it flip-flopping around the line.",
+                "type": "slider",
+                "min": 0, "max": 20, "step": 1, "unit": "%", "factor": 1, "integer": True,
+            },
+            {
+                "key": "soil_moisture.max_watering_seconds_per_day",
+                "label": "Most watering allowed per day",
+                "description": "A hard daily cap on how long the pump may run in total, as a safety backstop.",
+                "type": "slider",
+                "min": 1, "max": 120, "step": 1, "unit": "min", "factor": 60, "integer": True,
+            },
         ],
     },
     {
@@ -88,6 +102,12 @@ SETTINGS_GROUPS: list[dict[str, Any]] = [
                 "key": "pest_detection.enabled",
                 "label": "Pest control",
                 "description": "When on, the system watches for pests and can spray automatically.",
+                "type": "toggle",
+            },
+            {
+                "key": "pest_detection.suggestions.enabled",
+                "label": "Treatment suggestions",
+                "description": "Show recommended treatment steps when a pest is detected.",
                 "type": "toggle",
             },
             {

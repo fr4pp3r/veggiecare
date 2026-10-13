@@ -71,6 +71,7 @@ class SystemState:
             "image_path": None,
             "model": None,
             "error": None,
+            "suggestion": None,
         }
 
         # Camera state
@@ -91,6 +92,21 @@ class SystemState:
             "remaining": 0,
             "max": 0,
             "limit_reached": False,
+        }
+
+        # Watering policy state (closed-loop)
+        self.watering: dict[str, Any] = {
+            "fault": False,
+            "fault_reason": None,
+            "non_responses": 0,
+            "cooldown_seconds": 0,
+            "cooldown_remaining_seconds": 0,
+            "budget": {
+                "used_seconds": 0,
+                "max_seconds": 0,
+                "remaining_seconds": 0,
+                "blocked": False,
+            },
         }
 
         # NPK fertilizer recommendation state
@@ -176,6 +192,12 @@ class SystemState:
         with self._lock:
             self.pest.update(fields)
 
+    def update_watering(self, **fields: Any) -> None:
+        with self._lock:
+            budget = fields.pop("budget", None)
+            if budget is not None:
+                self.watering["budget"] = dict(budget)
+            self.watering.update(fields)
     def update_camera(self, **fields: Any) -> None:
         with self._lock:
             self.camera.update(fields)
@@ -230,6 +252,7 @@ class SystemState:
                 "moisture": dict(self.moisture),
                 "relays": relays,
                 "usage": dict(self.usage),
+                "watering": dict(self.watering),
                 "pest": dict(self.pest),
                 "camera": dict(self.camera),
                 "db": dict(self.db),

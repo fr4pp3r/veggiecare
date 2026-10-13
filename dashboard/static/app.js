@@ -34,10 +34,20 @@
     moistThLabel: n('moist-th-label'),
     moistStatus: n('moist-status'),
     moistMeta: n('moist-meta'),
+    // Watering closed-loop (fault banner + daily budget + cooldown)
+    wateringFault: n('watering-fault'),
+    wateringFaultReason: n('watering-fault-reason'),
+    btnWateringReset: n('btn-watering-reset'),
+    wateringUsage: n('watering-usage'),
+    wateringUsed: n('watering-used'),
+    wateringMax: n('watering-max'),
+    wateringRemaining: n('watering-remaining'),
+    wateringCooldown: n('watering-cooldown'),
     relayGrid: n('relay-grid'),
     btnEmergency: n('btn-emergency'),
     pestStatus: n('pest-status'),
     pestDetails: n('pest-details'),
+    pestTreatment: n('pest-treatment'),
     pestUsed: n('pest-used'),
     pestMax: n('pest-max'),
     pestRemaining: n('pest-remaining'),
@@ -225,6 +235,9 @@
     // Usage (pest response monthly limit)
     renderUsage(data.usage);
 
+    // Watering closed-loop (fault + daily budget + settle cooldown)
+    renderWatering(data.watering);
+
     els.moistMeta.textContent = `Last reading: ${fmtTime(moist.timestamp)} | Last watering: —`;
 
     // Relays
@@ -270,6 +283,102 @@
     });
   }
 
+  // IPM treatment tiers — fixed step numbers so the escalation ladder
+  // (cultural → organic → chemical-as-last-resort) always reads the same way,
+  // even when a tier's list is empty and gets skipped.
+  const TREATMENT_TIERS = [
+    { key: 'cultural', step: '1', title: 'Cultural controls', tag: 'Try this first' },
+    { key: 'organic',  step: '2', title: 'Organic options',   tag: 'If needed' },
+    { key: 'chemical', step: '3', title: 'Chemical treatment', tag: 'Last resort' },
+  ];
+
+  // Cache the last-rendered suggestion so the panel isn't rebuilt (and its
+  // entrance animation re-triggered) on every 5s poll.
+  let treatmentSig = null;
+
+  function tEl(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  function renderPestTreatment(suggestion) {
+    const panel = els.pestTreatment;
+    if (!panel) return;
+    const sig = JSON.stringify(suggestion || null);
+    if (sig === treatmentSig) return;
+    treatmentSig = sig;
+    panel.replaceChildren();
+    if (!suggestion) {
+      panel.classList.add('hidden');
+      return;
+    }
+    panel.classList.remove('hidden');
+
+    const unmatched = suggestion.matched === false;
+    panel.classList.toggle('is-generic', unmatched);
+
+    // Heading: matched → the pest's name; unmatched → framed as general advice
+    panel.appendChild(tEl('div', 'treatment-eyebrow', 'Suggested treatment'));
+    const header = tEl('div', 'treatment-header');
+    const title = tEl('h3', 'treatment-title', unmatched
+      ? 'General guidance'
+      : (suggestion.title
+          || (suggestion.pest_class ? suggestion.pest_class.replace(/^./, c => c.toUpperCase()) : 'Treatment steps')));
+    header.appendChild(title);
+    if (suggestion.severity) {
+      const known = ['low', 'moderate', 'high'].includes(suggestion.severity);
+      header.appendChild(tEl('span',
+        'treatment-severity ' + (known ? suggestion.severity : 'unknown'),
+        (known ? suggestion.severity : String(suggestion.severity)) + ' severity'));
+    }
+    panel.appendChild(header);
+
+    if (unmatched) {
+      panel.appendChild(tEl('p', 'treatment-fallback-note',
+        'This pest is not in the treatment guide yet, so the steps below are general advice rather than guidance for that specific pest.'));
+    }
+    if (suggestion.summary) {
+      panel.appendChild(tEl('p', 'treatment-summary', suggestion.summary));
+    }
+
+    const tiersWrap = tEl('div', 'treatment-tiers');
+    TREATMENT_TIERS.forEach(tier => {
+      const items = Array.isArray(suggestion[tier.key]) ? suggestion[tier.key] : [];
+      if (!items.length) return; // never render an empty heading
+      const block = tEl('div', 'treatment-tier tier-' + tier.key);
+      const heading = tEl('h4', 'treatment-tier-heading');
+      heading.appendChild(tEl('span', 'tier-step', tier.step));
+      heading.appendChild(tEl('span', 'tier-title', tier.title));
+      heading.appendChild(tEl('span', 'tier-tag', tier.tag));
+      block.appendChild(heading);
+      const list = tEl('ul', 'tier-list');
+      items.forEach(item => list.appendChild(tEl('li', null, String(item))));
+      block.appendChild(list);
+      tiersWrap.appendChild(block);
+    });
+    if (tiersWrap.children.length) panel.appendChild(tiersWrap);
+
+    // Notes — always after the tiers, muted
+    const notes = Array.isArray(suggestion.notes) ? suggestion.notes : [];
+    if (notes.length) {
+      const notesBlock = tEl('div', 'treatment-notes');
+      const notesHeading = tEl('h4', 'treatment-tier-heading');
+      notesHeading.appendChild(tEl('span', 'tier-title', 'Notes'));
+      notesBlock.appendChild(notesHeading);
+      const notesList = tEl('ul', 'tier-list');
+      notes.forEach(item => notesList.appendChild(tEl('li', null, String(item))));
+      notesBlock.appendChild(notesList);
+      panel.appendChild(notesBlock);
+    }
+
+    // Disclaimer — always shown when present, small and muted
+    if (suggestion.disclaimer) {
+      panel.appendChild(tEl('p', 'treatment-disclaimer', suggestion.disclaimer));
+    }
+  }
+
   function renderPest(pest) {
     if (!pest.enabled || !pest.configured) {
       els.pestStatus.textContent = pest.enabled
@@ -279,6 +388,7 @@
       els.pestDetails.classList.add('hidden');
       els.pestScanActions.classList.add('hidden');
       els.pestSimControls.style.display = 'none';
+      renderPestTreatment(null);
       return;
     }
     els.pestStatus.style.display = 'none';
@@ -292,6 +402,7 @@
       <div class="pest-detail-row"><span class="label">Model</span><span class="value">${pest.model || '—'}</span></div>
       <div class="pest-detail-row"><span class="label">Last detection</span><span class="value">${fmtTime(pest.timestamp)}</span></div>
     `;
+    renderPestTreatment(pest.suggestion || null);
   }
 
   function renderUsage(usage) {
@@ -308,6 +419,68 @@
     els.pestRemaining.textContent = `Remaining: ${rem}`;
     els.pestRemaining.className = 'remaining' +
       (rem <= 0 ? ' critical' : rem <= 1 ? ' low' : '');
+  }
+
+  // Watering seconds → short farmer-readable duration ("12 min", "45s")
+  function fmtMins(sec) {
+    const s = Math.max(0, Math.round(sec || 0));
+    if (s < 60) return `${s}s`;
+    return `${Math.round(s / 60)} min`;
+  }
+
+  // Budget-row formatter — always whole minutes so used/max/remaining share
+  // one unit ("0 min / 30 min"), never a mixed "0s / 30 min".
+  function fmtMinsWhole(sec) {
+    return `${Math.max(0, Math.round((sec || 0) / 60))} min`;
+  }
+
+  // Closed-loop watering: fault banner, daily budget, settle-window hint.
+  // Older snapshots may not carry data.watering — render nothing then.
+  // Only textContent/classList updates here: no DOM rebuilds, so the 5s
+  // poll never re-triggers the banner animation unless the fault flips.
+  function renderWatering(watering) {
+    const faultEl = els.wateringFault;
+    if (!faultEl) return;
+
+    if (!watering) {
+      faultEl.classList.add('hidden');
+      els.wateringUsage.classList.add('hidden');
+      els.wateringCooldown.classList.add('hidden');
+      return;
+    }
+
+    // 1. Fault banner — the loudest signal on the card, but calm copy.
+    if (watering.fault) {
+      els.wateringFaultReason.textContent =
+        watering.fault_reason ||
+        'Watering has stopped and needs attention.';
+      faultEl.classList.remove('hidden');
+    } else {
+      faultEl.classList.add('hidden');
+    }
+
+    // 2. Daily budget — sibling of the pest card's "Monthly pest responses" row.
+    const budget = watering.budget;
+    if (budget && budget.max_seconds != null) {
+      els.wateringUsed.textContent = fmtMinsWhole(budget.used_seconds);
+      els.wateringMax.textContent = fmtMinsWhole(budget.max_seconds);
+      const rem = budget.remaining_seconds;
+      els.wateringRemaining.textContent = `Remaining: ${fmtMinsWhole(rem)}`;
+      els.wateringRemaining.className = 'remaining' +
+        (budget.blocked || rem <= 0 ? ' critical' : rem <= budget.max_seconds * 0.1 ? ' low' : '');
+      els.wateringUsage.classList.remove('hidden');
+    } else {
+      els.wateringUsage.classList.add('hidden');
+    }
+
+    // 3. Settle window — muted one-liner, only while counting down.
+    const cd = watering.cooldown_remaining_seconds;
+    if (cd > 0) {
+      els.wateringCooldown.textContent = `Waiting before next watering: ${fmtMins(cd)}`;
+      els.wateringCooldown.classList.remove('hidden');
+    } else {
+      els.wateringCooldown.classList.add('hidden');
+    }
   }
 
   function renderSystem(data) {
@@ -882,6 +1055,21 @@
     try { await postJson(`${API}/automation/resume`); } catch (e) { addAlert('error', 'Dashboard', e.message); }
   }
 
+  async function resetWateringFault() {
+    const btn = els.btnWateringReset;
+    if (btn) btn.disabled = true;
+    try {
+      const res = await postJson(`${API}/watering/reset`);
+      addAlert(res.ok ? 'info' : 'error', 'Dashboard',
+        res.message || (res.ok ? 'Watering fault cleared.' : 'Could not clear the watering fault.'));
+      if (res.ok) poll(); // refresh the moisture card promptly
+    } catch (e) {
+      addAlert('error', 'Dashboard', e.message);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
   async function simulatePest() {
     try {
       const res = await postJson(`${API}/pest/simulate`, {
@@ -1007,6 +1195,7 @@
   els.btnPause.addEventListener('click', pauseAutomation);
   els.btnResume.addEventListener('click', resumeAutomation);
   els.btnSimPest.addEventListener('click', simulatePest);
+  els.btnWateringReset?.addEventListener('click', resetWateringFault);
   els.btnScanStepper?.addEventListener('click', () => forcePestMonitor('stepper'));
   els.btnScanCamera?.addEventListener('click', () => forcePestMonitor('camera'));
   els.btnSaveSettings.addEventListener('click', saveSettings);

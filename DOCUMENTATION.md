@@ -227,6 +227,33 @@ camera:
   image_dir: data/images
 ```
 
+#### Soil Moisture & Watering
+```yaml
+soil_moisture:
+  enabled: true
+  spi_bus: 0
+  spi_device: 0
+  channel: 0
+  adc_max: 1023
+  vref: 3.3
+  dry_adc: 500          # calibration: ADC reading in dry air
+  wet_adc: 50           # calibration: ADC reading in water
+  samples: 20           # readings averaged per measurement
+  read_interval_seconds: 30
+  log_interval_seconds: 300
+  threshold: 30         # watering triggers below this %
+  relay_id: 2
+  relay_activation_duration_seconds: 120
+  # Closed-loop watering policy
+  hysteresis: 5                      # once "below threshold", moisture must reach threshold+hysteresis to clear
+  watering_cooldown_seconds: 900     # settle + response-observation window (15 min)
+  response_rise_percent: 2.0         # moisture must rise this much to count as a response
+  max_consecutive_non_responses: 3   # waterings with no measurable rise before fault
+  max_watering_seconds_per_day: 1800 # hard daily cap (30 min/day)
+  simulated:
+    moisture: 45
+```
+
 #### Pest Detection
 ```yaml
 pest_detection:
@@ -271,6 +298,7 @@ Flask dashboard serves on `http://0.0.0.0:5000` by default.
 - `POST /api/emergency-stop` - Emergency stop (all relays off, pause automation)
 - `POST /api/automation/pause` / `resume` - Control automation
 - `POST /api/pest/simulate` - Trigger mock pest detection
+- `POST /api/watering/reset` - Clear a latched watering fault (from closed-loop response check)
 - `GET /api/detections` - Recent pest detections from DB
 - `GET /api/config/schema` - Config schema for settings UI
 - `GET /api/settings` - Current config (readable form)
@@ -302,10 +330,15 @@ Automation runs in background loop every `tick_seconds`.
 - Fires WARNING alert only on transition from OK → below threshold (not every tick)
 - **No automatic relay activation** (alert-only as per design)
 
-### 2. Soil Moisture & Watering
+### 2. Soil Moisture & Watering (closed-loop)
 - Reads at `soil_moisture.read_interval_seconds` (default 30s)
 - Auto-waters (relay 2 by default) when moisture < threshold
-- **Cooldown**: `watering_cooldown_seconds` prevents retriggering immediately
+- **Hysteresis**: once "below threshold" is latched, moisture must rise to `threshold + hysteresis` (default 35%) before it clears — prevents flip-flopping around the threshold
+- **Cooldown / response window**: `watering_cooldown_seconds` (default 900s = 15 min) serves as both the settle period AND the response-observation window — after watering, the system watches the moisture reading for this duration
+- **Response check**: within the cooldown window, if moisture rises by at least `response_rise_percent` (default 2%) from the baseline taken at watering start, the response is confirmed and the non-response counter resets
+- **Fault latch**: after `max_consecutive_non_responses` (default 3) waterings with no measurable rise, the system latches a fault — watering stops, a CRITICAL alert fires, and the dashboard shows a "Watering stopped" banner with a Reset button
+- **Fault auto-clear**: the fault clears automatically when moisture recovers above `threshold + hysteresis` (soil is fine again), or manually via the dashboard Reset button (`POST /api/watering/reset`)
+- **Daily budget**: `max_watering_seconds_per_day` (default 1800s = 30 min/day) is a hard ceiling on cumulative watering seconds per calendar day — when reached, watering is blocked and a WARNING alert fires once per day
 - Logs activations to DB
 - Fires alert on transition to low moisture
 

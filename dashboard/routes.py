@@ -376,6 +376,34 @@ def api_pest_scan():
     return jsonify({"ok": ok, "message": message})
 
 
+@bp.route("/api/watering/reset", methods=["POST"])
+def api_watering_reset():
+    ctrl = _controller()
+    if ctrl is None:
+        return jsonify({"ok": False, "error": "Controller not ready"}), 503
+
+    ok, msg = ctrl.reset_watering_fault()
+    return jsonify({"ok": ok, "message": msg})
+
+
+@bp.route("/api/pest/treatment", methods=["GET"])
+def api_pest_treatment():
+    ctrl = _controller()
+    if ctrl is None:
+        return jsonify({"ok": False, "error": "Controller not ready"}), 503
+
+    pest_class = (request.args.get("class") or "").strip()
+    if not pest_class:
+        pest_class = None
+
+    try:
+        advice = ctrl.suggest_treatment(pest_class)
+    except Exception as exc:
+        log.exception("suggest_treatment failed")
+        advice = None
+    return jsonify({"ok": True, "class": pest_class, "advice": advice})
+
+
 # ======================================================================
 # JSON API — system test (diagnostics)
 # ======================================================================

@@ -67,9 +67,26 @@ soil_moisture:
   # below this percentage. There is NO monthly limit on watering.
   threshold: 30          # percent
   relay_id: 2
+  # Closed-loop watering policy: after each watering the system watches
+  # how the soil moisture responds before deciding to water again.
+  hysteresis: 5                        # percent. Once "below threshold" is true it
+                                       # stays true until moisture reaches
+                                       # threshold + hysteresis. Stops a reading
+                                       # oscillating around the threshold from
+                                       # re-triggering. Must satisfy 0 <= hysteresis.
   # Wait this long after a completed watering before the system may
   # activate watering again (avoids re-triggering on a still-wet probe).
-  watering_cooldown_seconds: 3600
+  # This window is also the period during which the moisture response is
+  # observed to decide whether the watering worked.
+  watering_cooldown_seconds: 900       # CHANGED from 3600 -> 900. This window is BOTH
+                                       # the settling period after watering AND the
+                                       # window during which the response is observed.
+  response_rise_percent: 2.0           # percent rise in moisture required, within the
+                                       # cooldown window, to count as "the watering worked".
+  max_consecutive_non_responses: 3     # consecutive waterings with no measurable
+                                       # response before the system declares a fault.
+  max_watering_seconds_per_day: 1800    # hard ceiling on cumulative watering seconds per
+                                       # calendar day (1800 = 30 min/day).
   # Value returned when system.simulate_hardware is true
   simulated:
     moisture: 45
@@ -146,6 +163,277 @@ pest_detection:
       detection_probability: 0.25
       confidence_min: 0.50
       confidence_max: 0.98
+
+  # IPM-first treatment guidance surfaced when a pest is detected.
+  suggestions:
+    enabled: true
+    disclaimer: "Treatment guidance only, not a prescription: always follow the product label and local regulations."
+    fallback:
+      title: "Pest not in local guide"
+      summary: "The detected class is not in the local treatment knowledge base. Confirm the identification before acting."
+      cultural:
+        - "Remove visibly infested plant material and weeds; improve airflow and spacing."
+        - "Scout and monitor regularly so action targets only confirmed pests."
+      organic:
+        - "Consider organic controls (e.g. insecticidal soap or neem) only after confirming the pest and reading the label."
+      chemical:
+        - "If needed, use a product registered for this pest on this crop and follow the label."
+      notes:
+        - "Always follow the product label, check pre-harvest intervals, and protect pollinators by spraying at dusk."
+
+  treatments:
+    - id: aphids
+      names: [aphids, aphid]
+      title: "Aphids"
+      severity: high
+      summary: "Soft-bodied sap suckers on new growth that curl leaves and leave honeydew; can spread viruses."
+      cultural:
+        - "Blast colonies off with a strong water spray early in the day."
+        - "Remove infested tips and avoid excess nitrogen fertilizer."
+        - "Encourage natural enemies such as lady beetles and lacewings."
+      organic:
+        - "Apply insecticidal soap or a neem/pyrethrin product labelled for aphids."
+        - "Introduce beneficial insects such as lady beetles or parasitic wasps."
+      chemical:
+        - "Last resort: a pyrethrin- or pyrethroid-based product, or a registered systemic, for this pest on the crop."
+      notes:
+        - "Follow the product label and re-entry intervals."
+        - "Check pre-harvest intervals before using on edible crops."
+        - "Spray at dusk to protect pollinators and avoid blooms."
+    - id: armyworm
+      names: [armyworm]
+      title: "Armyworm"
+      severity: high
+      summary: "Caterpillars that chew leaves and can strip young plants overnight."
+      cultural:
+        - "Hand-pick caterpillars and egg masses; destroy crop residues after harvest."
+        - "Use pheromone traps to monitor adult flights and time interventions."
+        - "Encourage birds and parasitic wasps by maintaining habitat."
+      organic:
+        - "Apply Bacillus thuringiensis (Bt) or spinosad products labelled for caterpillars."
+        - "Use neem-based sprays for small larvae."
+      chemical:
+        - "Last resort: a registered carbamate, organophosphate, or pyrethroid product labelled for armyworm."
+      notes:
+        - "Follow the product label and re-entry intervals."
+        - "Check pre-harvest intervals before using on edible crops."
+        - "Spray at dusk to protect pollinators and avoid blooms."
+    - id: beetle
+      names: [beetle, weevil]
+      title: "Beetles and weevils"
+      severity: moderate
+      summary: "Chewing beetles and weevils that defoliate plants and bore into stems."
+      cultural:
+        - "Hand-pick adults and larvae; use row covers on young plants."
+        - "Rotate crops and remove plant debris to break life cycles."
+        - "Use trap crops to concentrate beetles away from main crop."
+      organic:
+        - "Apply neem or pyrethrin products labelled for beetles."
+        - "Use beneficial nematodes against soil-dwelling larvae."
+      chemical:
+        - "Last resort: a registered pyrethroid or carbaryl product labelled for beetles."
+      notes:
+        - "Follow the product label and re-entry intervals."
+        - "Check pre-harvest intervals before using on edible crops."
+        - "Spray at dusk to protect pollinators and avoid blooms."
+    - id: bollworm
+      names: [bollworm]
+      title: "Bollworm"
+      severity: high
+      summary: "Larvae that bore into fruiting bodies, causing rot and yield loss."
+      cultural:
+        - "Remove and destroy damaged fruit and plant residues."
+        - "Use pheromone traps to time scouting and treatment."
+        - "Encourage parasitic wasps and predatory bugs."
+      organic:
+        - "Apply Bt or spinosad products labelled for bollworm."
+        - "Use neem sprays on small larvae."
+      chemical:
+        - "Last resort: a registered pyrethroid or diamide product labelled for bollworm."
+      notes:
+        - "Follow the product label and re-entry intervals."
+        - "Check pre-harvest intervals before using on edible crops."
+        - "Spray at dusk to protect pollinators and avoid blooms."
+    - id: grasshopper
+      names: [grasshopper]
+      title: "Grasshopper"
+      severity: moderate
+      summary: "Leaf- and stem-chewing insects that cause ragged defoliation."
+      cultural:
+        - "Maintain borders of short grass to reduce egg-laying habitat."
+        - "Hand-pick in small gardens; use row covers on seedlings."
+        - "Encourage birds and blister beetles as natural enemies."
+      organic:
+        - "Apply neem or garlic-based repellent sprays labelled for grasshoppers."
+        - "Use Nosema locustae baits in small areas."
+      chemical:
+        - "Last resort: a registered carbaryl or pyrethroid product labelled for grasshoppers."
+      notes:
+        - "Follow the product label and re-entry intervals."
+        - "Check pre-harvest intervals before using on edible crops."
+        - "Spray at dusk to protect pollinators and avoid blooms."
+    - id: mites
+      names: [mites, mite]
+      title: "Mites"
+      severity: high
+      summary: "Tiny sap suckers causing stippling, bronzing and webbing under leaves."
+      cultural:
+        - "Increase humidity and rinse foliage to dislodge mites."
+        - "Remove heavily infested leaves and avoid drought stress."
+        - "Avoid broad-spectrum insecticides that kill predatory mites."
+      organic:
+        - "Apply insecticidal soap or horticultural oil labelled for mites."
+        - "Introduce predatory mites such as Phytoseiulus persimilis."
+      chemical:
+        - "Last resort: a registered miticide or abamectin product labelled for mites."
+      notes:
+        - "Follow the product label and re-entry intervals."
+        - "Check pre-harvest intervals before using on edible crops."
+        - "Spray at dusk to protect pollinators and avoid blooms."
+    - id: mosquito
+      names: [mosquito]
+      title: "Mosquito"
+      severity: low
+      summary: "Nuisance adults breed in standing water; rarely direct plant pests."
+      cultural:
+        - "Eliminate standing water in trays, gutters and containers."
+        - "Improve drainage and cover water storage."
+        - "Use fans or screens in enclosed growing areas."
+      organic:
+        - "Use Bti products in standing water where label allows."
+        - "Apply repellent sprays to people, not plants."
+      chemical:
+        - "Last resort: a registered larvicide or adulticide for mosquito control per local rules."
+      notes:
+        - "Follow the product label and re-entry intervals."
+        - "Check pre-harvest intervals before using on edible crops."
+        - "Protect pollinators: avoid broad spraying of flowering plants."
+    - id: sawfly
+      names: [sawfly]
+      title: "Sawfly"
+      severity: moderate
+      summary: "Larvae that skeletonize leaves and can defoliate shrubs and crops."
+      cultural:
+        - "Hand-pick larvae early in the season."
+        - "Remove and destroy infested foliage and debris."
+        - "Encourage parasitic wasps."
+      organic:
+        - "Apply insecticidal soap or spinosad products labelled for sawfly."
+        - "Use neem sprays on young larvae."
+      chemical:
+        - "Last resort: a registered carbaryl or pyrethroid product labelled for sawfly."
+      notes:
+        - "Follow the product label and re-entry intervals."
+        - "Check pre-harvest intervals before using on edible crops."
+        - "Spray at dusk to protect pollinators and avoid blooms."
+    - id: stem_borer
+      names: [stem_borer]
+      title: "Stem borer"
+      severity: high
+      summary: "Larvae tunnel in stems causing wilting, dead hearts and broken stalks."
+      cultural:
+        - "Remove and destroy infested stems and stubble after harvest."
+        - "Use pheromone traps to monitor moth activity."
+        - "Adjust planting dates to avoid peak flights."
+      organic:
+        - "Apply Bt or neem products labelled for borers where contact is possible."
+        - "Release egg parasitoids suited to the species."
+      chemical:
+        - "Last resort: a registered systemic or granular insecticide labelled for stem borers."
+      notes:
+        - "Follow the product label and re-entry intervals."
+        - "Check pre-harvest intervals before using on edible crops."
+        - "Spray at dusk to protect pollinators and avoid blooms."
+    - id: caterpillar
+      names: [caterpillar]
+      title: "Caterpillar (general)"
+      severity: moderate
+      summary: "Chewing larvae causing holes in leaves and fruit."
+      cultural:
+        - "Hand-pick and destroy larvae and egg masses."
+        - "Use row covers and remove weeds that host larvae."
+        - "Encourage birds and predatory insects."
+      organic:
+        - "Apply Bt or spinosad products labelled for caterpillars."
+        - "Use neem sprays on young larvae."
+      chemical:
+        - "Last resort: a registered pyrethroid or carbamate product labelled for caterpillars."
+      notes:
+        - "Follow the product label and re-entry intervals."
+        - "Check pre-harvest intervals before using on edible crops."
+        - "Spray at dusk to protect pollinators and avoid blooms."
+    - id: fungus
+      names: [fungus]
+      title: "Fungal disease"
+      severity: moderate
+      summary: "Fungal infection (not an insect) causing spots, mould or rot on leaves and stems."
+      cultural:
+        - "Improve airflow, spacing and watering at the base; avoid wet foliage."
+        - "Remove and destroy infected plant material; sanitize tools."
+        - "Rotate crops and use resistant varieties where available."
+      organic:
+        - "Apply copper or sulfur fungicides labelled for the disease."
+        - "Use biological fungicides such as Bacillus subtilis where labelled."
+      chemical:
+        - "Last resort: a registered systemic or protectant fungicide labelled for this disease."
+      notes:
+        - "Follow the product label and re-entry intervals."
+        - "Check pre-harvest intervals before using on edible crops."
+        - "Protect pollinators and avoid spraying blooms where possible."
+    - id: whitefly
+      names: [whitefly]
+      title: "Whitefly"
+      severity: moderate
+      summary: "Small white sap suckers under leaves causing yellowing and sooty mould."
+      cultural:
+        - "Use yellow sticky traps to monitor and reduce adults."
+        - "Remove infested leaves; avoid excess nitrogen."
+        - "Encourage parasitic wasps and predatory beetles."
+      organic:
+        - "Apply insecticidal soap or neem products labelled for whitefly."
+        - "Release Encarsia or Eretmocerus parasitoids."
+      chemical:
+        - "Last resort: a registered pyrethrin, pyrethroid or IGR product labelled for whitefly."
+      notes:
+        - "Follow the product label and re-entry intervals."
+        - "Check pre-harvest intervals before using on edible crops."
+        - "Spray at dusk to protect pollinators and avoid blooms."
+    - id: slugs_snails
+      names: [slug, snail]
+      title: "Slugs and snails"
+      severity: moderate
+      summary: "Molluscs that rasp holes in leaves and seedlings, feeding at night."
+      cultural:
+        - "Remove hiding spots; hand-pick at night or early morning."
+        - "Use barriers such as copper tape or diatomaceous earth."
+        - "Reduce mulch contact with stems and improve drainage."
+      organic:
+        - "Use iron phosphate slug baits labelled for the crop."
+        - "Set beer traps or board traps and empty daily."
+      chemical:
+        - "Last resort: a registered metaldehyde or iron phosphate molluscicide labelled for the crop."
+      notes:
+        - "Follow the product label and re-entry intervals."
+        - "Check pre-harvest intervals before using on edible crops."
+        - "Avoid harm to pets, wildlife and beneficials; follow label."
+    - id: thrips
+      names: [thrips]
+      title: "Thrips"
+      severity: moderate
+      summary: "Tiny rasping insects causing silvering, stippling and distorted growth."
+      cultural:
+        - "Use blue sticky traps to monitor adults."
+        - "Remove weeds and crop debris that harbour thrips."
+        - "Avoid excess nitrogen and water stress."
+      organic:
+        - "Apply insecticidal soap or spinosad products labelled for thrips."
+        - "Use predatory mites and minute pirate bugs."
+      chemical:
+        - "Last resort: a registered spinosad, pyrethrin or carbamate product labelled for thrips."
+      notes:
+        - "Follow the product label and re-entry intervals."
+        - "Check pre-harvest intervals before using on edible crops."
+        - "Spray at dusk to protect pollinators and avoid blooms."
 
 # ------------------------------------------------------------------
 # NPK-based fertilizer recommendations.

@@ -245,6 +245,21 @@ def main() -> int:
     else:
         log.info("NPK recommendations disabled")
 
+    # Pest treatment suggestions
+    suggestions_cfg = cfg.get("pest_detection", {}).get("suggestions", {})
+    if suggestions_cfg.get("enabled"):
+        try:
+            from pest_detection.treatment_advisor import PestTreatmentAdvisor
+            advisor = PestTreatmentAdvisor(cfg)
+        except Exception as exc:
+            log.error("Failed to initialize pest treatment advisor: %s", exc)
+            advisor = None
+        if advisor is not None:
+            controller.attach_treatment_advisor(advisor)
+            log.info("Pest treatment advisor enabled (%s)", getattr(advisor, "name", "advisor"))
+    else:
+        log.info("Pest treatment suggestions disabled")
+
     controller.start()
 
     # 8. Shutdown safety — relays OFF on exit, no matter how we leave.

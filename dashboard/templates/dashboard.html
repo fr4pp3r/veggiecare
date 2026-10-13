@@ -99,6 +99,13 @@
         <section id="moisture" class="card collapsible">
           <header class="card-header"><h2>Soil Moisture</h2></header>
           <div class="card-body">
+            <div id="watering-fault" class="watering-fault hidden" role="alert">
+              <div class="watering-fault-header">
+                <span class="watering-fault-tag">Watering stopped</span>
+              </div>
+              <p class="watering-fault-reason" id="watering-fault-reason"></p>
+              <button id="btn-watering-reset" class="btn btn-secondary btn-sm watering-fault-reset" type="button">Reset</button>
+            </div>
             <div class="sensor-main">
               <span class="label">Moisture</span>
               <span class="value large" id="moist-val">—</span>
@@ -114,6 +121,11 @@
                 <span id="moist-status" class="status"></span>
               </div>
             </div>
+            <div class="usage-info watering-usage hidden" id="watering-usage">
+              <span>Daily watering budget: <strong id="watering-used">—</strong> / <strong id="watering-max">—</strong></span>
+              <span id="watering-remaining" class="remaining">Remaining: —</span>
+            </div>
+            <p class="meta watering-cooldown hidden" id="watering-cooldown"></p>
             <p class="meta" id="moist-meta">Last reading: — | Last watering: —</p>
           </div>
         </section>
@@ -167,6 +179,7 @@
           <div class="card-body">
             <div id="pest-status" class="pest-status">Not configured / Camera not installed</div>
             <div id="pest-details" class="pest-details hidden"></div>
+            <div id="pest-treatment" class="pest-treatment hidden" aria-live="polite"></div>
             <div class="usage-info">
               <span>Monthly pest responses: <strong id="pest-used">—</strong> / <strong id="pest-max">—</strong></span>
               <span id="pest-remaining" class="remaining">Remaining: —</span>

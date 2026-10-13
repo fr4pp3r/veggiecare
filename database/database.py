@@ -64,7 +64,8 @@ CREATE TABLE IF NOT EXISTS pest_detections (
     confidence  REAL,
     image_path  TEXT,
     model       TEXT,
-    camera      TEXT
+    camera      TEXT,
+    suggestion  TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_pest_detections_timestamp ON pest_detections(timestamp);
 
@@ -128,6 +129,14 @@ class Database:
             self._conn.execute("PRAGMA busy_timeout=5000")
             self._conn.executescript(_SCHEMA)
             self._conn.commit()
+            # Idempotent migration: add suggestion column to pre-existing DBs.
+            try:
+                cols = [r[1] for r in self._conn.execute("PRAGMA table_info(pest_detections)").fetchall()]
+                if "suggestion" not in cols:
+                    self._conn.execute("ALTER TABLE pest_detections ADD COLUMN suggestion TEXT")
+                    self._conn.commit()
+            except sqlite3.Error as exc:
+                raise DatabaseError(f"cannot migrate database {self.path}: {exc}") from exc
         except sqlite3.Error as exc:
             raise DatabaseError(f"cannot open database {self.path}: {exc}") from exc
 
@@ -208,12 +217,14 @@ class Database:
     def insert_pest_detection(self, detected: bool, pest_class: str | None,
                               confidence: float | None, image_path: str | None,
                               model: str | None, camera: str | None,
-                              timestamp: str | None = None) -> None:
+                              timestamp: str | None = None,
+                              suggestion: dict | None = None) -> None:
         self._execute(
             """INSERT INTO pest_detections
-               (timestamp, detected, pest_class, confidence, image_path, model, camera)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (timestamp or _now(), int(detected), pest_class, confidence, image_path, model, camera),
+               (timestamp, detected, pest_class, confidence, image_path, model, camera, suggestion)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (timestamp or _now(), int(detected), pest_class, confidence, image_path, model, camera,
+             json.dumps(suggestion) if suggestion else None),
         )
 
     def insert_npk_recommendation(self, nitrogen: float, phosphorus: float, potassium: float,
@@ -264,6 +275,27 @@ class Database:
         )
         return int(row[0]["n"]) if row else 0
 
+    def last_relay_activation(self, relay_id: int) -> dict | None:
+        """Return the most recent relay activation row (timestamp +
+        duration_seconds) for *relay_id*, or None if there is none.
+        Tolerant of NULL duration_seconds."""
+        rows = self._query(
+            "SELECT timestamp, COALESCE(duration_seconds, 0) AS duration_seconds "
+            "FROM relay_activations WHERE relay_id = ? "
+            "ORDER BY id DESC LIMIT 1",
+            (relay_id,),
+        )
+        return dict(rows[0]) if rows else None
+
+    def watering_seconds_since(self, relay_id: int, since: str) -> float:
+        """Sum of activation durations for *relay_id* with timestamp >= since."""
+        row = self._query(
+            "SELECT COALESCE(SUM(COALESCE(duration_seconds, 0)), 0) AS s "
+            "FROM relay_activations WHERE relay_id = ? AND timestamp >= ?",
+            (relay_id, since),
+        )
+        return float(row[0]["s"]) if row else 0.0
+
     def recent_events(self, limit: int = 50, min_level: str | None = None) -> list[dict]:
         levels = _LEVELS
         if min_level:
@@ -279,11 +311,23 @@ class Database:
 
     def recent_pest_detections(self, limit: int = 10) -> list[dict]:
         rows = self._query(
-            "SELECT timestamp, detected, pest_class, confidence, image_path, model, camera "
+            "SELECT timestamp, detected, pest_class, confidence, image_path, model, camera, suggestion "
             "FROM pest_detections ORDER BY id DESC LIMIT ?",
             (limit,),
         )
-        return [dict(r) for r in rows]
+        result = []
+        for r in rows:
+            d = dict(r)
+            raw = d.get("suggestion")
+            if raw:
+                try:
+                    d["suggestion"] = json.loads(raw)
+                except (json.JSONDecodeError, ValueError, TypeError):
+                    d["suggestion"] = None
+            else:
+                d["suggestion"] = None
+            result.append(d)
+        return result
 
     def recent_npk_recommendations(self, limit: int = 50) -> list[dict]:
         rows = self._query(

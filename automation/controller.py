@@ -81,6 +81,7 @@ class AutomationController:
         self._camera = None         # set via attach_camera()
         self._stepper = None        # set via attach_stepper()
         self._recommender = None    # set via attach_recommender()
+        self._treatment_advisor: Any | None = None  # set via attach_treatment_advisor()
 
         # Internal bookkeeping
         self._stop = threading.Event()
@@ -109,6 +110,13 @@ class AutomationController:
         # Cooldown: do not re-trigger watering until this time has passed.
         self._watering_cooldown_until = 0.0
 
+        # Watering closed-loop bookkeeping.
+        self._water_baseline_value: float | None = None
+        self._watering_non_responses: int = 0
+        self._watering_fault: bool = False
+        self._watering_blocked_alert_day: str | None = None
+        self._last_watering_budget_read: float = 0.0
+        self._watering_budget_used: float = 0.0
         # Loop cadence — tests can shorten this so ticks run fast.
         self._tick_seconds = float(config.get("system", {}).get("tick_seconds", 1.0))
         if self._tick_seconds <= 0:
@@ -137,6 +145,9 @@ class AutomationController:
     def attach_recommender(self, recommender: Any) -> None:
         self._recommender = recommender
 
+    def attach_treatment_advisor(self, advisor: Any) -> None:
+        self._treatment_advisor = advisor
+
     # ------------------------------------------------------------------
     # lifecycle
     # ------------------------------------------------------------------
@@ -144,6 +155,7 @@ class AutomationController:
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
             return
+        self._seed_watering_state()
         self._stop.clear()
         self._thread = threading.Thread(
             target=self._run, daemon=True, name="automation",
@@ -337,7 +349,12 @@ class AutomationController:
 
         value = reading.values.get("moisture", 0)
         threshold = float(cfg.get("threshold", 30))
-        below = value < threshold
+        prev_below = bool(self._state.moisture.get("below"))
+        hysteresis = float(cfg.get("hysteresis", 5))
+        if prev_below:
+            below = value < (threshold + hysteresis)
+        else:
+            below = value < threshold
         ts = reading.timestamp.isoformat(timespec="seconds")
         self._state.update_moisture(value=value, below=below, timestamp=ts)
         self._last_moisture_read = now
@@ -359,27 +376,99 @@ class AutomationController:
             self._log_event("WARNING", "moisture", f"Below threshold: {value:.1f}%")
         self._moisture_was_below = below
 
-    def _evaluate_watering(self, now: float, cfg: dict) -> None:
-        """Decide whether to auto-water based on current moisture state."""
-        if not self._state.moisture.get("below"):
-            return
+    def _sync_watering_state(self, now: float, cfg: dict) -> None:
+        """Keep cooldown countdown and daily budget display live (every tick)."""
+        remaining = max(0.0, self._watering_cooldown_until - now)
 
         relay_id = int(cfg.get("relay_id", 2))
-
-        # Cooldown check — do not re-trigger right after a recent watering.
-        if now < self._watering_cooldown_until:
-            return
-
-        # Already watering?
-        if self._relays.is_active(relay_id):
-            return
-
-        # Activate watering
         relay_entry = self._relays.get(relay_id)
         if relay_entry:
             duration = float(relay_entry["duration"])
         else:
             duration = float(cfg.get("relay_activation_duration_seconds", 300))
+
+        if now - self._last_watering_budget_read >= 30.0:
+            self._watering_budget_used = self._watering_seconds_today(now)
+            self._last_watering_budget_read = now
+
+        budget_max = float(cfg.get("max_watering_seconds_per_day", 1800))
+        blocked = (self._watering_budget_used + duration) > budget_max
+
+        current = self._state.watering
+        current_budget = current.get("budget") or {}
+        changed = (
+            round(remaining) != round(current.get("cooldown_remaining_seconds", 0))
+            or self._watering_budget_used != current_budget.get("used_seconds")
+            or budget_max != current_budget.get("max_seconds")
+            or max(0.0, budget_max - self._watering_budget_used) != current_budget.get("remaining_seconds")
+            or blocked != current_budget.get("blocked")
+        )
+        if changed:
+            self._state.update_watering(
+                cooldown_remaining_seconds=remaining,
+                budget={
+                    "used_seconds": self._watering_budget_used,
+                    "max_seconds": budget_max,
+                    "remaining_seconds": max(0.0, budget_max - self._watering_budget_used),
+                    "blocked": blocked,
+                },
+            )
+
+    def _evaluate_watering(self, now: float, cfg: dict) -> None:
+        """Decide whether to auto-water based on current moisture state."""
+        moist = self._state.moisture
+        value = moist.get("value")
+        prev_error = moist.get("error")
+
+        relay_id = int(cfg.get("relay_id", 2))
+
+        self._sync_watering_state(now, cfg)
+
+        # (a) FAULT LATCH — while faulted, never water.
+        if self._watering_fault:
+            if not moist.get("below"):
+                self._watering_fault = False
+                self._watering_non_responses = 0
+                self._water_baseline_value = None
+                self._state.update_watering(
+                    fault=False, fault_reason=None, non_responses=0,
+                )
+                self._state.add_alert("INFO", "Watering fault cleared: soil moisture recovered", "moisture")
+                self._log_event("INFO", "watering", "Watering fault auto-cleared (soil recovered)")
+            return
+
+        # (b) RESPONSE EVALUATION — once per watering, after observation window.
+        if self._water_baseline_value is not None and now >= self._watering_cooldown_until:
+            self._evaluate_watering_response(value, prev_error, cfg)
+            if self._watering_fault:
+                return
+
+        # (c) Normal guards
+        if not moist.get("below"):
+            return
+        if now < self._watering_cooldown_until:
+            return
+        if self._relays.is_active(relay_id):
+            return
+
+        # (d) HARD DAILY BUDGET
+        relay_entry = self._relays.get(relay_id)
+        if relay_entry:
+            duration = float(relay_entry["duration"])
+        else:
+            duration = float(cfg.get("relay_activation_duration_seconds", 300))
+        used_today = self._watering_budget_used
+        budget_max = float(cfg.get("max_watering_seconds_per_day", 1800))
+        if used_today + duration > budget_max:
+            today_str = datetime.now().date().isoformat()
+            if self._watering_blocked_alert_day != today_str:
+                self._watering_blocked_alert_day = today_str
+                msg = "Daily watering budget exceeded; watering blocked"
+                self._state.add_alert("WARNING", msg, "watering")
+                self._log_event("WARNING", "watering", msg)
+            return
+
+        # (e) ACTIVATE
         activated = self._relays.activate(
             relay_id, duration=duration, trigger="automatic",
         )
@@ -388,7 +477,6 @@ class AutomationController:
             self._state.set_relay(
                 relay_id, state="on", activated_at=ts, duration=duration,
             )
-            # Update usage immediately
             try:
                 self._db.insert_relay_activation(
                     relay_id=relay_id,
@@ -402,9 +490,125 @@ class AutomationController:
                 logger.error("DB write failed (relay activation): %s", exc)
             self._log_event("INFO", "watering", f"Auto-watering started ({duration:.0f}s)")
 
-            # Set cooldown so we don't immediately re-trigger
-            cooldown = float(cfg.get("watering_cooldown_seconds", 3600))
+            self._water_baseline_value = value
+            cooldown = float(cfg.get("watering_cooldown_seconds", 900))
             self._watering_cooldown_until = now + cooldown
+            self._watering_budget_used += duration
+            self._state.update_watering(
+                non_responses=self._watering_non_responses,
+                fault=self._watering_fault,
+                cooldown_seconds=cooldown,
+                cooldown_remaining_seconds=cooldown,
+            )
+
+    def _evaluate_watering_response(self, value: Any, error: Any, cfg: dict) -> None:
+        """Evaluate whether the last watering had an effect."""
+        if error is not None or value is None:
+            # Untrustworthy reading — do not blame the pump.
+            self._water_baseline_value = None
+            self._state.update_watering(
+                non_responses=self._watering_non_responses,
+                fault=self._watering_fault,
+                fault_reason=self._state.watering.get("fault_reason"),
+            )
+            return
+
+        baseline = self._water_baseline_value
+        rise = 0.0 if baseline is None else (value - baseline)
+        response_rise = float(cfg.get("response_rise_percent", 2.0))
+        max_non = int(cfg.get("max_consecutive_non_responses", 3))
+
+        if rise >= response_rise:
+            self._watering_non_responses = 0
+        else:
+            self._watering_non_responses += 1
+            if self._watering_non_responses >= max_non:
+                self._watering_fault = True
+                reason = (
+                    "The soil isn't getting wetter after watering. "
+                    "Check the pump, the water line, or the probe."
+                )
+                self._state.update_watering(
+                    fault=True, fault_reason=reason,
+                    non_responses=self._watering_non_responses,
+                )
+                self._state.add_alert("CRITICAL", reason, "moisture")
+                self._log_event("CRITICAL", "watering", reason)
+                self._water_baseline_value = None
+                return
+
+        self._water_baseline_value = None
+        self._state.update_watering(
+            non_responses=self._watering_non_responses,
+            fault=self._watering_fault,
+            fault_reason=self._state.watering.get("fault_reason"),
+        )
+
+    def _watering_seconds_today(self, now: Any) -> float:
+        """Total watering seconds recorded today in the DB."""
+        try:
+            moist_cfg = self._cfg.get("soil_moisture", {})
+            relay_id = int(moist_cfg.get("relay_id", 2))
+            since = datetime.now().replace(
+                hour=0, minute=0, second=0, microsecond=0,
+            ).isoformat(sep=" ", timespec="seconds")
+            return float(self._db.watering_seconds_since(relay_id, since))
+        except DatabaseError as exc:
+            logger.error("DB query failed (watering seconds today): %s", exc)
+            return 0.0
+
+    def _seed_watering_state(self) -> None:
+        """Seed cooldown/budget state from DB so a restart cannot bypass them."""
+        moist_cfg = self._cfg.get("soil_moisture", {})
+        cooldown = float(moist_cfg.get("watering_cooldown_seconds", 900))
+        try:
+            self._state.update_watering(cooldown_seconds=cooldown)
+            relay_id = int(moist_cfg.get("relay_id", 2))
+            last = self._db.last_relay_activation(relay_id)
+            if last is not None:
+                ts = last.get("timestamp")
+                if ts:
+                    try:
+                        activated_at = datetime.fromisoformat(ts)
+                    except (TypeError, ValueError):
+                        activated_at = None
+                    if activated_at is not None:
+                        elapsed = (datetime.now() - activated_at).total_seconds()
+                        if elapsed < cooldown:
+                            remaining = cooldown - elapsed
+                            self._watering_cooldown_until = time.monotonic() + remaining
+                            self._state.update_watering(
+                                cooldown_remaining_seconds=remaining,
+                            )
+            budget_max = float(moist_cfg.get("max_watering_seconds_per_day", 1800))
+            used_today = self._watering_seconds_today(time.monotonic())
+            self._watering_budget_used = used_today
+            self._last_watering_budget_read = time.monotonic()
+            self._state.update_watering(budget={
+                "used_seconds": used_today,
+                "max_seconds": budget_max,
+                "remaining_seconds": max(0.0, budget_max - used_today),
+                "blocked": False,
+            })
+        except DatabaseError as exc:
+            logger.error("Failed to seed watering state: %s", exc)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Failed to seed watering state: %s", exc)
+
+    def reset_watering_fault(self) -> tuple[bool, str]:
+        """Clear a latched watering fault. Never raises."""
+        try:
+            self._watering_fault = False
+            self._watering_non_responses = 0
+            self._water_baseline_value = None
+            self._state.update_watering(
+                fault=False, fault_reason=None, non_responses=0,
+            )
+            self._log_event("INFO", "watering", "Watering fault reset by operator")
+            return True, "Watering fault cleared"
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Failed to reset watering fault: %s", exc)
+            return False, str(exc)
 
     # ------------------------------------------------------------------
     # Pest detection cycle
@@ -513,7 +717,7 @@ class AutomationController:
         try:
             return self._detector.detect(image_path=image_path)
         except Exception as exc:
-            self._state.update_pest(error=str(exc))
+            self._state.update_pest(error=str(exc), suggestion=None)
             self._log_event("ERROR", "pest_detection", str(exc))
             return None
 
@@ -600,6 +804,15 @@ class AutomationController:
         model = result.model if result is not None else getattr(self._detector, "name", "unknown")
         image_path = getattr(result, "image_path", None) if result is not None else None
 
+        suggestion = None
+        if self._treatment_advisor is not None and detected:
+            try:
+                advice = self._treatment_advisor.suggest(result.pest_class if result is not None else None)
+                suggestion = advice.to_dict() if advice is not None else None
+            except Exception as exc:
+                logger.error("Treatment advice failed: %s", exc)
+                suggestion = None
+
         self._state.update_pest(
             detected=detected,
             pest_class=result.pest_class if detected else None,
@@ -609,6 +822,7 @@ class AutomationController:
             model=model,
             error=error,
             configured=True,
+            suggestion=suggestion,
         )
 
         try:
@@ -620,6 +834,7 @@ class AutomationController:
                 model=model,
                 camera=getattr(self._camera, "name", None) if self._camera else None,
                 timestamp=ts,
+                suggestion=suggestion,
             )
             self._state.update_db(ok=True, last_write=ts)
         except DatabaseError as exc:
@@ -658,7 +873,7 @@ class AutomationController:
         try:
             result = self._detector.detect(image_path=image_path)
         except Exception as exc:
-            self._state.update_pest(error=str(exc))
+            self._state.update_pest(error=str(exc), suggestion=None)
             self._log_event("ERROR", "pest_detection", str(exc))
             return
 
@@ -670,6 +885,15 @@ class AutomationController:
             and (result.confidence is None or result.confidence >= confidence_threshold)
         )
 
+        suggestion = None
+        if self._treatment_advisor is not None and effective_detected:
+            try:
+                advice = self._treatment_advisor.suggest(result.pest_class)
+                suggestion = advice.to_dict() if advice is not None else None
+            except Exception as exc:
+                logger.error("Treatment advice failed: %s", exc)
+                suggestion = None
+
         self._state.update_pest(
             detected=effective_detected,
             pest_class=result.pest_class,
@@ -679,6 +903,7 @@ class AutomationController:
             model=result.model,
             error=None,
             configured=True,
+            suggestion=suggestion,
         )
 
         # Database record
@@ -691,6 +916,7 @@ class AutomationController:
                 model=result.model,
                 camera=getattr(self._camera, "name", None) if self._camera else None,
                 timestamp=ts,
+                suggestion=suggestion,
             )
             self._state.update_db(ok=True, last_write=ts)
         except DatabaseError as exc:
@@ -796,6 +1022,20 @@ class AutomationController:
         self._process_pest_result(result, source=source)
         return result
 
+    def suggest_treatment(self, pest_class: str | None) -> dict | None:
+        """Return treatment advice for a class, or None if the advisor is unavailable."""
+        advisor = self._treatment_advisor
+        if advisor is None:
+            return None
+        try:
+            advice = advisor.suggest(pest_class)
+            if advice is None:
+                return None
+            return advice.to_dict()
+        except Exception as exc:
+            logger.error("Treatment advice failed: %s", exc)
+            return None
+
     def _process_pest_result(self, result: Any, source: str = "pest_detection") -> None:
         """Shared logic for handling a DetectionResult (real or injected)."""
         pest_cfg = self._cfg.get("pest_detection", {})
@@ -807,6 +1047,15 @@ class AutomationController:
             and (result.confidence is None or result.confidence >= confidence_threshold)
         )
 
+        suggestion = None
+        if self._treatment_advisor is not None and effective_detected:
+            try:
+                advice = self._treatment_advisor.suggest(result.pest_class)
+                suggestion = advice.to_dict() if advice is not None else None
+            except Exception as exc:
+                logger.error("Treatment advice failed: %s", exc)
+                suggestion = None
+
         self._state.update_pest(
             detected=effective_detected,
             pest_class=result.pest_class,
@@ -816,6 +1065,7 @@ class AutomationController:
             model=result.model,
             error=None,
             configured=True,
+            suggestion=suggestion,
         )
 
         try:
@@ -827,6 +1077,7 @@ class AutomationController:
                 model=result.model,
                 camera="simulated",
                 timestamp=ts,
+                suggestion=suggestion,
             )
             self._state.update_db(ok=True, last_write=ts)
         except DatabaseError as exc:

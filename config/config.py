@@ -98,6 +98,20 @@ def _in(cfg: dict, key: str, allowed: tuple, errors: list[str], path: str) -> No
     if value is not None and value not in allowed:
         errors.append(f"{path}.{key}: must be one of {allowed}, got {value!r}")
 
+def _validate_str_list(cfg: dict, key: str, errors: list[str], path: str) -> None:
+    if key not in cfg:
+        return
+    value = cfg.get(key)
+    if value is None:
+        errors.append(f"{path}.{key}: must be a list")
+        return
+    if not isinstance(value, list):
+        errors.append(f"{path}.{key}: must be a list, got {type(value).__name__}")
+        return
+    for idx, item in enumerate(value):
+        if not isinstance(item, str) or not item.strip():
+            errors.append(f"{path}.{key}[{idx}]: must be a non-empty string")
+
 
 # ----------------------------------------------------------------------
 # Validation
@@ -163,6 +177,15 @@ def _validate_soil_moisture(section: dict, errors: list[str], relay_ids: set[int
         if relay_id not in relay_ids:
             errors.append(f"{path}.relay_id: relay {relay_id} not defined in relays.items")
     _number(section, "watering_cooldown_seconds", errors, path, minimum=0)
+    # Closed-loop watering policy keys (all optional; defaults applied in code).
+    if "hysteresis" in section:
+        _number(section, "hysteresis", errors, path, minimum=0)
+    if "response_rise_percent" in section:
+        _number(section, "response_rise_percent", errors, path, minimum=0, maximum=100)
+    if "max_consecutive_non_responses" in section:
+        _int(section, "max_consecutive_non_responses", errors, path, minimum=1)
+    if "max_watering_seconds_per_day" in section:
+        _number(section, "max_watering_seconds_per_day", errors, path, minimum=1)
     simulated = _field(section, "simulated", dict, errors, path)
     if simulated is not None:
         _number(simulated, "moisture", errors, f"{path}.simulated", minimum=0, maximum=100)
@@ -232,6 +255,86 @@ def _validate_pest(section: dict, errors: list[str], relay_ids: set[int]) -> Non
             cmax = random_cfg.get("confidence_max")
             if _is_number(cmin) and _is_number(cmax) and float(cmin) > float(cmax):
                 errors.append(f"{path}.mock.random: confidence_min must be <= confidence_max")
+
+    # IPM treatment suggestions knowledge base (optional).
+    if "suggestions" in section:
+        suggestions = section.get("suggestions")
+        if suggestions is None:
+            pass
+        elif not isinstance(suggestions, dict):
+            errors.append(f"{path}.suggestions: must be a mapping")
+        else:
+            s_path = f"{path}.suggestions"
+            if "enabled" in suggestions:
+                _bool(suggestions, "enabled", errors, s_path)
+            if "disclaimer" in suggestions:
+                _str(suggestions, "disclaimer", errors, s_path)
+            if "fallback" in suggestions:
+                fallback = suggestions.get("fallback")
+                if fallback is None:
+                    pass
+                elif not isinstance(fallback, dict):
+                    errors.append(f"{s_path}.fallback: must be a mapping")
+                else:
+                    fb_path = f"{s_path}.fallback"
+                    for key in ("title", "summary"):
+                        if key in fallback:
+                            _str(fallback, key, errors, fb_path)
+                    for key in ("cultural", "organic", "chemical", "notes"):
+                        if key in fallback:
+                            _validate_str_list(fallback, key, errors, fb_path)
+
+    if "treatments" in section:
+        treatments = section.get("treatments")
+        if treatments is None:
+            pass
+        elif not isinstance(treatments, list):
+            errors.append(f"{path}.treatments: must be a list")
+        else:
+            seen_ids = set()
+            seen_aliases = set()
+            for idx, entry in enumerate(treatments):
+                epath = f"{path}.treatments[{idx}]"
+                if not isinstance(entry, dict):
+                    errors.append(f"{epath}: must be a mapping")
+                    continue
+                _str(entry, "id", errors, epath)
+                _str(entry, "title", errors, epath)
+                _str(entry, "summary", errors, epath)
+                _in(entry, "severity", ("low", "moderate", "high"), errors, epath)
+
+                tid = entry.get("id")
+                if isinstance(tid, str) and tid.strip():
+                    if tid in seen_ids:
+                        errors.append(f"{epath}.id: duplicate treatment id {tid!r}")
+                    seen_ids.add(tid)
+
+                if "names" not in entry:
+                    errors.append(f"{epath}.names: missing")
+                else:
+                    names = entry.get("names")
+                    if not isinstance(names, list) or not names:
+                        errors.append(f"{epath}.names: must be a non-empty list")
+                    else:
+                        all_str = True
+                        for i, n in enumerate(names):
+                            if not isinstance(n, str) or not n.strip():
+                                errors.append(
+                                    f"{epath}.names[{i}]: must be a non-empty string"
+                                )
+                                all_str = False
+                        if all_str:
+                            for n in names:
+                                alias = n.strip().lower()
+                                if alias in seen_aliases:
+                                    errors.append(
+                                        f"{epath}.names: duplicate alias {n!r}"
+                                    )
+                                seen_aliases.add(alias)
+
+                for key in ("cultural", "organic", "chemical", "notes"):
+                    if key in entry:
+                        _validate_str_list(entry, key, errors, epath)
 
 
 def _validate_stepper(section: dict, errors: list[str]) -> None:
