@@ -41,7 +41,7 @@ SETTINGS_GROUPS: list[dict[str, Any]] = [
                 "label": "Minimum wait between waterings",
                 "description": "After watering, the system waits this long before it may water again. Prevents over-watering.",
                 "type": "slider",
-                "min": 5, "max": 240, "step": 5, "unit": "min", "factor": 60, "integer": True,
+                "min": 0, "max": 600, "step": 10, "unit": "s", "factor": 1, "integer": True,
             },
             {
                 "key": "soil_moisture.hysteresis",

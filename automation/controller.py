@@ -125,6 +125,9 @@ class AutomationController:
         # Transition tracking — alerts fire only on state *change*, not every tick.
         self._npk_was_below = False
         self._moisture_was_below = False
+        # Fertilizer id of the last alert sent, so the notification fires once
+        # per recommendation rather than on every NPK read.
+        self._last_fert_alert_id: str | None = None
         # Month in which the pest-response monthly-limit alert last fired, so
         # the blocked alert is emitted once per month, not every cycle.
         self._pest_blocked_alert_month: str | None = None
@@ -327,9 +330,19 @@ class AutomationController:
                     self._log_event("INFO", "npk_recommendation",
                         f"Recommended {result.fertilizer_name} @ {result.dosage_g_per_10L}g/10L "
                         f"({result.reasoning})")
+                    # Notify once per new/changed recommendation.
+                    if result.fertilizer_id != self._last_fert_alert_id:
+                        self._last_fert_alert_id = result.fertilizer_id
+                        self._state.add_alert(
+                            "INFO",
+                            f"Fertilizer recommended: {result.fertilizer_name} "
+                            f"({result.dosage_g_per_10L}g/10L)",
+                            "npk_recommendation",
+                        )
                 else:
                     # Clear recommendation when all nutrients in range
                     self._state.update_recommendation(recommended=False)
+                    self._last_fert_alert_id = None
             except Exception as exc:
                 logger.error("NPK recommendation failed: %s", exc)
                 self._state.update_recommendation(recommended=False, error=str(exc))
@@ -847,6 +860,7 @@ class AutomationController:
         alert_msg = f"Pest detected: {result.pest_class} (confidence {result.confidence:.2f})"
         self._state.add_alert("WARNING", alert_msg, source)
         self._log_event("WARNING", source, alert_msg)
+        self._notify_pesticide(suggestion, source)
 
         relay_id = int(pest_cfg.get("relay_id", 3))
         duration = float(pest_cfg.get("relay_activation_duration_seconds", 120))
@@ -928,6 +942,7 @@ class AutomationController:
             alert_msg = f"Pest detected: {result.pest_class} (confidence {result.confidence:.2f})"
             self._state.add_alert("WARNING", alert_msg, source)
             self._log_event("WARNING", source, alert_msg)
+            self._notify_pesticide(suggestion, source)
 
             relay_id = int(cfg.get("relay_id", 3))
             # Use the relay's own configured duration
@@ -1087,6 +1102,7 @@ class AutomationController:
             alert_msg = f"Pest detected: {result.pest_class} (confidence {result.confidence:.2f})"
             self._state.add_alert("WARNING", alert_msg, source)
             self._log_event("WARNING", source, alert_msg)
+            self._notify_pesticide(suggestion, source)
 
             relay_id = int(pest_cfg.get("relay_id", 3))
             relay_items = self._cfg.get("relays", {}).get("items", [])
@@ -1097,6 +1113,29 @@ class AutomationController:
                     break
 
             self._activate_pest_response(relay_id, duration, ts, source)
+
+    @staticmethod
+    def _pesticide_label(suggestion: Any) -> str | None:
+        """Short product label from a treatment-advice dict, if any."""
+        if not isinstance(suggestion, dict):
+            return None
+        if suggestion.get("matched") is False:
+            return None
+        for key in ("chemical", "organic"):
+            items = suggestion.get(key)
+            if isinstance(items, (list, tuple)) and items and isinstance(items[0], str):
+                label = items[0].strip()
+                if label:
+                    return label
+        title = suggestion.get("title")
+        return title.strip() if isinstance(title, str) and title.strip() else None
+
+    def _notify_pesticide(self, suggestion: Any, source: str) -> None:
+        """Raise a notification for the recommended pesticide, if one exists."""
+        label = self._pesticide_label(suggestion)
+        if label is None:
+            return
+        self._state.add_alert("INFO", f"Pesticide suggested: {label}", "pest_treatment")
 
     def _activate_pest_response(self, relay_id: int, duration: float, ts: str, source: str) -> None:
         """Activate the pest response relay, subject to the monthly limit."""

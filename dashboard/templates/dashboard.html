@@ -12,6 +12,22 @@
     <div class="header-meta">
       <span id="uptime">Starting…</span>
       <span id="mode-badge" class="badge"></span>
+      <div class="notif-wrap">
+        <button class="notif-bell" id="notif-bell" type="button" aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+          <span class="notif-badge hidden" id="notif-badge" aria-hidden="true">0</span>
+        </button>
+        <div class="notif-panel hidden" id="notif-panel" role="region" aria-label="Notifications">
+          <div class="notif-head">
+            <h2>Notifications</h2>
+            <div class="notif-actions">
+              <button class="btn btn-ghost btn-sm" id="notif-mark-all" type="button">Mark all read</button>
+              <button class="btn btn-ghost btn-sm" id="notif-clear" type="button">Clear</button>
+            </div>
+          </div>
+          <div class="notif-list" id="notif-list"></div>
+        </div>
+      </div>
       <button class="hamburger-btn" id="hamburger-btn" aria-label="Open menu" aria-expanded="false">
         <svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M2 4h16v2H2V4zm0 5h16v2H2V9zm0 5h16v2H2v-2z"/></svg>
       </button>

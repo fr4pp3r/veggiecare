@@ -125,6 +125,9 @@ class SystemState:
         self.db: dict[str, Any] = {"ok": True, "error": None, "last_write": None}
         self.automation: dict[str, Any] = {"running": False, "paused": False}
         self._alerts: deque = deque(maxlen=30)
+        # Monotonic id source for alerts, so the dashboard can track
+        # read/dismissed notifications across polls.
+        self._alert_seq = 0
 
     # ------------------------------------------------------------------
     # writers
@@ -222,7 +225,9 @@ class SystemState:
 
     def add_alert(self, level: str, message: str, source: str | None = None) -> None:
         with self._lock:
+            self._alert_seq += 1
             self._alerts.appendleft({
+                "id": self._alert_seq,
                 "level": level,
                 "message": message,
                 "source": source,

@@ -61,7 +61,8 @@ soil_moisture:
   dry_adc: 500           # calibration: ADC reading in dry air
   wet_adc: 50            # calibration: ADC reading in water
   samples: 20            # readings averaged per measurement
-  read_interval_seconds: 30
+  read_interval_seconds: 5            # fast enough that a fresh reading lands
+                                      # inside the 10 s cooldown/response window
   log_interval_seconds: 300
   # Relay 2 (watering) is activated automatically when moisture drops
   # below this percentage. There is NO monthly limit on watering.
@@ -78,7 +79,7 @@ soil_moisture:
   # activate watering again (avoids re-triggering on a still-wet probe).
   # This window is also the period during which the moisture response is
   # observed to decide whether the watering worked.
-  watering_cooldown_seconds: 900       # CHANGED from 3600 -> 900. This window is BOTH
+  watering_cooldown_seconds: 10        # Short cooldown (10 s). This window is BOTH
                                        # the settling period after watering AND the
                                        # window during which the response is observed.
   response_rise_percent: 2.0           # percent rise in moisture required, within the

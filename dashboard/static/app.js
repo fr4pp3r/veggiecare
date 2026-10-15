@@ -10,6 +10,13 @@
     modeBadge: document.getElementById('mode-badge'),
     alertsList: document.querySelector('.alerts-list'),
     clearAlerts: document.getElementById('clear-alerts'),
+    // Notification bell & panel
+    notifBell: n('notif-bell'),
+    notifBadge: n('notif-badge'),
+    notifPanel: n('notif-panel'),
+    notifList: n('notif-list'),
+    notifMarkAll: n('notif-mark-all'),
+    notifClear: n('notif-clear'),
     npk: { n: n('npk-n'), p: n('npk-p'), k: n('npk-k') },
     npkTh: { n: n('npk-th-n'), p: n('npk-th-p'), k: n('npk-th-k') },
     npkSt: { n: n('npk-st-n'), p: n('npk-st-p'), k: n('npk-st-k') },
@@ -102,6 +109,16 @@
   let alertId = 0;
   let knownAlertKeys = new Set();
   let activeView = 'overview';
+
+  // Notification panel state — read/dismissed keys persist in localStorage
+  const NOTIF_READ_KEY = 'veggiecare.notif.read';
+  const NOTIF_DISMISSED_KEY = 'veggiecare.notif.dismissed';
+  const NOTIF_CAP = 100;
+  let notifRead = new Set(loadNotifKeys(NOTIF_READ_KEY));
+  let notifDismissed = new Set(loadNotifKeys(NOTIF_DISMISSED_KEY));
+  let notifSig = null;
+  let lastNotifAlerts = [];
+  let lastNotifShown = [];
 
   // Helpers
   function fmtTime(iso) {
@@ -257,6 +274,9 @@
 
     // Alerts
     renderAlerts(data.alerts);
+
+    // Notification bell (same alerts feed, separate read/dismissed state)
+    renderNotifications(data.alerts);
   }
 
   function renderRelays(relays) {
@@ -650,6 +670,216 @@
 
   function escapeHtml(s) {
     return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  // ------------------------------------------------------------------
+  // Notifications — bell dropdown fed by the same data.alerts poll
+  // ------------------------------------------------------------------
+
+  function loadNotifKeys(storageKey) {
+    try {
+      const raw = JSON.parse(localStorage.getItem(storageKey) || '[]');
+      return Array.isArray(raw) ? raw.map(String).slice(-NOTIF_CAP) : [];
+    } catch (_) {
+      return []; // localStorage unavailable (private mode, etc.)
+    }
+  }
+
+  function saveNotifKeys(storageKey, set) {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify([...set].slice(-NOTIF_CAP)));
+    } catch (_) { /* storage unavailable — state still works this session */ }
+  }
+
+  // Oldest-first insertion order; drop from the front once past the cap.
+  function trimNotifSet(set) {
+    while (set.size > NOTIF_CAP) {
+      set.delete(set.values().next().value);
+    }
+  }
+
+  // Stable per-alert key: id plus its own identity, so a backend restart
+  // (ids restart at 1) can never make a new alert inherit an old read state.
+  function notifKey(a) {
+    if (!a) return '';
+    const stamp = `${a.timestamp || ''}|${a.source || ''}|${a.message || ''}`;
+    return a.id != null ? `id:${a.id}|${stamp}` : stamp;
+  }
+
+  const NOTIF_SOURCES = {
+    moisture: 'Soil moisture',
+    watering: 'Watering',
+    npk: 'Fertilizer',
+    npk_recommendation: 'Fertilizer recommendation',
+    pest_detection: 'Pest detection',
+    pest_treatment: 'Pesticide recommendation',
+  };
+
+  function notifSourceLabel(src) {
+    if (!src) return '';
+    return NOTIF_SOURCES[src] || String(src).replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+  }
+
+  function fmtRelTime(iso) {
+    if (!iso) return '';
+    const t = new Date(iso).getTime();
+    if (Number.isNaN(t)) return fmtTime(iso);
+    const diff = Date.now() - t;
+    if (diff < 60000) return 'just now';
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+    if (diff < 604800000) return `${Math.floor(diff / 86400000)}d ago`;
+    return fmtTime(iso);
+  }
+
+  function setNotifOpen(open) {
+    if (!els.notifPanel) return;
+    els.notifPanel.classList.toggle('hidden', !open);
+    els.notifBell?.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  function buildNotifItem(a) {
+    const key = notifKey(a);
+    const level = String(a.level || 'info').toLowerCase();
+    const isRead = notifRead.has(key);
+
+    const item = document.createElement('div');
+    item.className = `notif-item level-${level} ${isRead ? 'read' : 'unread'}`;
+
+    const main = document.createElement('button');
+    main.type = 'button';
+    main.className = 'notif-item-main';
+    main.dataset.notifKey = key;
+
+    const dot = document.createElement('span');
+    dot.className = 'notif-dot';
+    dot.setAttribute('aria-hidden', 'true');
+
+    const body = document.createElement('span');
+    body.className = 'notif-body';
+    const msg = document.createElement('span');
+    msg.className = 'notif-msg';
+    msg.textContent = a.message || '';
+    const meta = document.createElement('span');
+    meta.className = 'notif-meta';
+    meta.textContent = [notifSourceLabel(a.source), fmtRelTime(a.timestamp)].filter(Boolean).join(' • ');
+    body.append(msg, meta);
+    main.append(dot, body);
+
+    const dismiss = document.createElement('button');
+    dismiss.type = 'button';
+    dismiss.className = 'notif-dismiss';
+    dismiss.dataset.notifDismiss = key;
+    dismiss.setAttribute('aria-label', 'Dismiss notification');
+    dismiss.textContent = '×';
+
+    item.append(main, dismiss);
+    return item;
+  }
+
+  function buildNotifList(shown) {
+    const frag = document.createDocumentFragment();
+    if (!shown.length) {
+      const empty = document.createElement('div');
+      empty.className = 'notif-empty';
+      empty.textContent = 'No new notifications';
+      frag.appendChild(empty);
+    } else {
+      shown.forEach(a => frag.appendChild(buildNotifItem(a)));
+    }
+    els.notifList.replaceChildren(frag);
+  }
+
+  function updateNotifBadge(shown) {
+    if (!els.notifBadge) return;
+    const unread = shown.filter(a => !notifRead.has(notifKey(a)));
+    const count = unread.length;
+    if (count === 0) {
+      els.notifBadge.classList.add('hidden');
+      els.notifBell?.setAttribute('aria-label', 'Notifications');
+      return;
+    }
+    // Tint the badge by the most serious unread level
+    const rank = { info: 0, warning: 1, error: 2, critical: 2 };
+    let top = 0;
+    unread.forEach(a => {
+      const r = rank[String(a.level || 'info').toLowerCase()];
+      if (r !== undefined && r > top) top = r;
+    });
+    els.notifBadge.className = 'notif-badge ' + ['level-info', 'level-warning', 'level-error'][top];
+    els.notifBadge.textContent = count > 99 ? '99+' : String(count);
+    els.notifBell?.setAttribute('aria-label', `Notifications, ${count} unread`);
+  }
+
+  // Rebuild only when the visible set, read state, or minute changes —
+  // keeps an open panel stable across the 5s poll instead of flickering.
+  function renderNotifications(alerts) {
+    const list = Array.isArray(alerts) ? alerts : [];
+    lastNotifAlerts = list;
+    lastNotifShown = list.filter(a => !notifDismissed.has(notifKey(a)));
+
+    const sig = Math.floor(Date.now() / 60000) + JSON.stringify(lastNotifShown.map(a => [
+      notifKey(a), a.level || '', a.source || '', a.message || '', a.timestamp || '',
+      notifRead.has(notifKey(a)),
+    ]));
+    if (sig !== notifSig) {
+      notifSig = sig;
+      const active = document.activeElement;
+      const refocus = (active && active.dataset && (active.dataset.notifKey || active.dataset.notifDismiss)) || null;
+      buildNotifList(lastNotifShown);
+      if (refocus) restoreNotifFocus(refocus);
+    }
+
+    updateNotifBadge(lastNotifShown);
+    const allRead = lastNotifShown.length > 0 &&
+      lastNotifShown.every(a => notifRead.has(notifKey(a)));
+    if (els.notifMarkAll) els.notifMarkAll.disabled = lastNotifShown.length === 0 || allRead;
+    if (els.notifClear) els.notifClear.disabled = lastNotifShown.length === 0;
+  }
+
+  // Keep keyboard focus inside the panel across a list rebuild.
+  function restoreNotifFocus(key) {
+    const candidates = els.notifList.querySelectorAll('[data-notif-key],[data-notif-dismiss]');
+    for (const el of candidates) {
+      if ((el.dataset.notifKey || el.dataset.notifDismiss) === key) {
+        el.focus();
+        return;
+      }
+    }
+    const first = els.notifList.querySelector('[data-notif-key]');
+    (first || els.notifBell)?.focus();
+  }
+
+  function onNotifListClick(e) {
+    const dismissBtn = e.target.closest('[data-notif-dismiss]');
+    if (dismissBtn) {
+      notifDismissed.add(dismissBtn.dataset.notifDismiss);
+      trimNotifSet(notifDismissed);
+      saveNotifKeys(NOTIF_DISMISSED_KEY, notifDismissed);
+      renderNotifications(lastNotifAlerts);
+      return;
+    }
+    const main = e.target.closest('[data-notif-key]');
+    if (main && !notifRead.has(main.dataset.notifKey)) {
+      notifRead.add(main.dataset.notifKey);
+      trimNotifSet(notifRead);
+      saveNotifKeys(NOTIF_READ_KEY, notifRead);
+      renderNotifications(lastNotifAlerts);
+    }
+  }
+
+  function markAllNotifsRead() {
+    lastNotifAlerts.forEach(a => notifRead.add(notifKey(a)));
+    trimNotifSet(notifRead);
+    saveNotifKeys(NOTIF_READ_KEY, notifRead);
+    renderNotifications(lastNotifAlerts);
+  }
+
+  function clearNotifs() {
+    lastNotifAlerts.forEach(a => notifDismissed.add(notifKey(a)));
+    trimNotifSet(notifDismissed);
+    saveNotifKeys(NOTIF_DISMISSED_KEY, notifDismissed);
+    renderNotifications(lastNotifAlerts);
   }
 
   // ------------------------------------------------------------------
@@ -1217,6 +1447,25 @@
     els.alertsList.innerHTML = '';
     knownAlertKeys.clear();
   });
+
+  // Notification bell — open/close, item actions (mark read / dismiss)
+  els.notifBell?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setNotifOpen(els.notifPanel.classList.contains('hidden'));
+  });
+  document.addEventListener('click', (e) => {
+    if (!els.notifPanel || els.notifPanel.classList.contains('hidden')) return;
+    if (!e.target.closest('.notif-wrap')) setNotifOpen(false);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && els.notifPanel && !els.notifPanel.classList.contains('hidden')) {
+      setNotifOpen(false);
+      els.notifBell?.focus();
+    }
+  });
+  els.notifList?.addEventListener('click', onNotifListClick);
+  els.notifMarkAll?.addEventListener('click', markAllNotifsRead);
+  els.notifClear?.addEventListener('click', clearNotifs);
   els.navTabs.forEach(t => t.addEventListener('click', () => switchView(t.dataset.view)));
   els.subTabs.forEach(t => t.addEventListener('click', () => switchLogTab(t.dataset.log)));
   els.logsRefresh.addEventListener('click', loadLogs);
