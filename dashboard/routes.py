@@ -774,8 +774,42 @@ def api_detections():
 # JSON API — database export
 # ======================================================================
 
-@bp.route("/api/database/export")
-def api_database_export():
+@bp.route("/api/database/download")
+def api_database_download():
+    """Download a consistent snapshot of the SQLite database file."""
+    db = getattr(current_app, "veggiecare_db", None)
+    if db is None:
+        return jsonify({"ok": False, "error": "Database not available"}), 503
+    try:
+        import os
+        import tempfile
+
+        from flask import after_this_request, send_file
+
+        fd, tmp_path = tempfile.mkstemp(suffix=".db", prefix="veggiecare-")
+        os.close(fd)
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+        db.backup_to(tmp_path)
+
+        @after_this_request
+        def _cleanup(response):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+            return response
+
+        return send_file(
+            tmp_path,
+            as_attachment=True,
+            download_name="veggiecare.db",
+            mimetype="application/x-sqlite3",
+        )
+    except Exception as exc:
+        log.exception("Database download failed")
+        return jsonify({"ok": False, "error": str(exc)}), 500
     """Export all database tables as JSON."""
     db = getattr(current_app, "veggiecare_db", None)
     if db is None:

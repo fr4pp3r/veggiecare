@@ -511,6 +511,16 @@ class Database:
         )
         return [dict(r) for r in rows]
 
+    def backup_to(self, dest: str | Path) -> None:
+        """Create a consistent snapshot of the database at *dest*."""
+        dest = Path(dest)
+        if dest.exists():
+            dest.unlink()
+        with sqlite3.connect(str(dest)) as target:
+            self._conn.commit()
+            self._conn.backup(target)
+            target.commit()
+
     def close(self) -> None:
         with self._lock:
             try:
