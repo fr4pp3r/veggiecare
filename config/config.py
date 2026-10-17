@@ -387,6 +387,66 @@ def _validate_camera(section: dict, errors: list[str]) -> None:
     _number(section, "fps", errors, path, minimum=1)
 
 
+def _validate_tanks(section: dict, errors: list[str]) -> None:
+    """Validate the optional ``tanks`` section (volume-based dosing)."""
+    path = "tanks"
+    for tank_name in ("fertilizer", "pesticide"):
+        if tank_name not in section:
+            continue
+        tank = section[tank_name]
+        if not isinstance(tank, dict):
+            errors.append(f"{path}.{tank_name}: must be a mapping")
+            continue
+        tpath = f"{path}.{tank_name}"
+        for key in ("enabled", "auto_enabled", "require_refill_confirmation"):
+            if key in tank:
+                _bool(tank, key, errors, tpath)
+        for key in ("fertilizer_type", "pesticide_type"):
+            if key in tank:
+                _field(tank, key, str, errors, tpath)
+        for key in ("npk_n", "npk_p", "npk_k", "total_ml", "tank_capacity_ml",
+                    "ml_dispensed_since_refill", "ml_remaining_est",
+                    "fert_ml_per_cycle", "min_ml_for_cycle", "ml_per_activation",
+                    "min_dose_seconds", "soak_days", "min_watering_seconds_for_fert"):
+            if key in tank:
+                _number(tank, key, errors, tpath, minimum=0)
+        if "pump_lph" in tank:
+            _number(tank, "pump_lph", errors, tpath, minimum=1)
+        if "max_activations_per_month" in tank:
+            _int(tank, "max_activations_per_month", errors, tpath, minimum=0)
+        if "mode" in tank:
+            _in(tank, "mode", ("with_watering", "separate"), errors, tpath)
+
+        # Invariant: a volume-driven dose must be metrable. The pump cannot
+        # reliably deliver less than one minimum pulse, so the configured target
+        # must be at least that volume — otherwise a refill would be rejected,
+        # or the runtime would be forced to command a sub-floor pulse.
+        pump_lph = tank.get("pump_lph", 800)
+        min_dose = tank.get("min_dose_seconds", 0)
+        target_key = "fert_ml_per_cycle" if tank_name == "fertilizer" else "ml_per_activation"
+        target = tank.get(target_key)
+        if (_is_number(pump_lph) and pump_lph > 0
+                and _is_number(min_dose) and min_dose > 0
+                and _is_number(target) and target > 0):
+            min_ml = pump_lph * 1000.0 * min_dose / 3600.0
+            if target < min_ml - 1e-9:
+                errors.append(
+                    f"{tpath}.{target_key}: {target:g} mL is below the minimum "
+                    f"meterable dose {min_ml:.0f} mL ({min_dose:g}s at {pump_lph:g} L/H); "
+                    f"increase {target_key} or lower min_dose_seconds"
+                )
+
+        # A fertigation window shorter than the minimum pulse can never
+        # dispense a valid dose.
+        if tank_name == "fertilizer":
+            window = tank.get("min_watering_seconds_for_fert")
+            if (_is_number(window) and _is_number(min_dose) and window < min_dose):
+                errors.append(
+                    f"{tpath}.min_watering_seconds_for_fert: {window:g}s is shorter "
+                    f"than min_dose_seconds ({min_dose:g}s); fertigation could never run"
+                )
+
+
 def _validate_npk_recommendations(section: dict, errors: list[str]) -> None:
     path = "npk_recommendations"
     _bool(section, "enabled", errors, path)
@@ -498,6 +558,10 @@ def validate(cfg: dict) -> None:
     stepper_cfg = cfg.get("stepper")
     if isinstance(stepper_cfg, dict):
         _validate_stepper(stepper_cfg, errors)
+
+    tanks_cfg = cfg.get("tanks")
+    if isinstance(tanks_cfg, dict):
+        _validate_tanks(tanks_cfg, errors)
 
     npk_rec_cfg = _field(cfg, "npk_recommendations", dict, errors, "config")
     if npk_rec_cfg is not None:

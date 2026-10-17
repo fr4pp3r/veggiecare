@@ -336,6 +336,120 @@ def api_automation_resume():
 
 
 # ======================================================================
+# JSON API — tanks (fertilizer/pesticide)
+# ======================================================================
+
+
+def _fnum(body: dict, key: str, default: float) -> float:
+    """Parse a float from a JSON body, falling back to *default*."""
+    try:
+        value = body.get(key, default)
+        return float(default) if value is None else float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _fnum_or_none(body: dict, key: str) -> float | None:
+    """Parse an optional positive float, returning None when absent/invalid."""
+    try:
+        value = float(body.get(key, 0))
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def _fnum_opt(body: dict, key: str) -> float | None:
+    """Parse an optional float, returning None only when the key is absent.
+
+    Unlike ``_fnum_or_none`` this preserves an explicit 0 (e.g. ``soak_days: 0``
+    is meaningful). Returning None lets the controller fall back to the value
+    already on the tank, so a refill patches rather than silently resetting
+    settings the operator never touched.
+    """
+    if key not in body:
+        return None
+    try:
+        return float(body[key])
+    except (TypeError, ValueError):
+        return None
+
+
+@bp.route("/api/tanks/<tank_name>/refill", methods=["POST"])
+def api_tank_refill(tank_name: str):
+    ctrl = _controller()
+    if ctrl is None:
+        return jsonify({"ok": False, "error": "Controller not ready"}), 503
+
+    body = request.get_json(silent=True) or {}
+    tank_name = tank_name.lower()
+
+    if tank_name not in ("fertilizer", "pesticide"):
+        return jsonify({"ok": False, "error": "Invalid tank name"}), 400
+
+    # Fields the form does not always send are passed as None so the
+    # controller inherits the current tank value instead of resetting it to a
+    # hardcoded default (see Controller._resolve).
+    mode = str(body["mode"]).lower() if body.get("mode") else None
+
+    if tank_name == "fertilizer":
+        ok, msg = ctrl.refill_fertilizer_tank(
+            fertilizer_type=str(body.get("fertilizer_type", "")).strip(),
+            npk_n=_fnum(body, "npk_n", 0),
+            npk_p=_fnum(body, "npk_p", 0),
+            npk_k=_fnum(body, "npk_k", 0),
+            total_ml=_fnum(body, "total_ml", 0),
+            tank_capacity_ml=_fnum_or_none(body, "tank_capacity_ml"),
+            pump_lph=_fnum_opt(body, "pump_lph"),
+            fert_ml_per_cycle=_fnum_opt(body, "fert_ml_per_cycle"),
+            min_dose_seconds=_fnum_opt(body, "min_dose_seconds"),
+            soak_days=_fnum_opt(body, "soak_days"),
+            mode=mode,
+        )
+    else:
+        ok, msg = ctrl.refill_pesticide_tank(
+            pesticide_type=str(body.get("pesticide_type", "")).strip(),
+            total_ml=_fnum(body, "total_ml", 0),
+            tank_capacity_ml=_fnum_or_none(body, "tank_capacity_ml"),
+            pump_lph=_fnum_opt(body, "pump_lph"),
+            ml_per_activation=_fnum_opt(body, "ml_per_activation"),
+            min_dose_seconds=_fnum_opt(body, "min_dose_seconds"),
+            soak_days=_fnum_opt(body, "soak_days"),
+        )
+    return jsonify({"ok": ok, "message": msg}), (200 if ok else 400)
+
+
+@bp.route("/api/tanks/<tank_name>/auto", methods=["POST"])
+def api_tank_auto(tank_name: str):
+    ctrl = _controller()
+    if ctrl is None:
+        return jsonify({"ok": False, "error": "Controller not ready"}), 503
+
+    body = request.get_json(silent=True) or {}
+    tank_name = tank_name.lower()
+
+    if tank_name not in ("fertilizer", "pesticide"):
+        return jsonify({"ok": False, "error": "Invalid tank name"}), 400
+
+    enabled = bool(body.get("enabled", True))
+    ok, msg = ctrl.set_tank_auto(tank_name, enabled)
+    return jsonify({"ok": ok, "message": msg}), (200 if ok else 400)
+
+
+@bp.route("/api/tanks/<tank_name>/enable", methods=["POST"])
+def api_tank_enable(tank_name: str):
+    ctrl = _controller()
+    if ctrl is None:
+        return jsonify({"ok": False, "error": "Controller not ready"}), 503
+
+    tank_name = tank_name.lower()
+    if tank_name not in ("fertilizer", "pesticide"):
+        return jsonify({"ok": False, "error": "Invalid tank name"}), 400
+
+    ok, msg = ctrl.set_tank_enabled(tank_name, True)
+    return jsonify({"ok": ok, "message": msg}), (200 if ok else 400)
+
+
+# ======================================================================
 # JSON API — pest simulation (testing only)
 # ======================================================================
 

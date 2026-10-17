@@ -1,5 +1,58 @@
 /* VeggieCare Dashboard — clean, responsive, no dependencies */
 
+/* Tanks (fertilizer/pesticide) */
+.tank-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+.tank-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: rgba(127, 127, 127, 0.04);
+}
+.tank-card h3 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+.tank-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.85rem;
+  padding: 2px 0;
+}
+.tank-row > span:first-child {
+  color: var(--fg-muted);
+}
+.tank-blocked.is-blocked {
+  color: var(--warning);
+  font-weight: 600;
+}
+.tank-form {
+  margin-top: 10px;
+}
+.tank-form summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.tank-form .form-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 4px 0;
+}
+.tank-form .form-row label {
+  font-size: 0.8rem;
+  color: var(--fg-muted);
+}
+.tank-form .form-row input,
+.tank-form .form-row select {
+  max-width: 140px;
+}
+
 :root {
   --bg: #0f1216;
   --bg-card: #161b22;

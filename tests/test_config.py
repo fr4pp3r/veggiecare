@@ -182,6 +182,63 @@ def test_save_user_config_updates_list_item(tmp_path):
 # Closed-loop watering policy keys
 # ----------------------------------------------------------------------
 
+
+# ----------------------------------------------------------------------
+# Tank dosing invariants (volume-driven doses must be metrable)
+# ----------------------------------------------------------------------
+
+def _with_tanks(temp_config, tanks):
+    import yaml
+
+    with open(temp_config) as f:
+        data = yaml.safe_load(f)
+    data["tanks"] = tanks
+    with open(temp_config, "w") as f:
+        yaml.safe_dump(data, f)
+
+
+def test_config_rejects_fertilizer_dose_below_minimum_meterable_volume(temp_config):
+    """At 800 L/H a 1s pulse is ~222 mL, so 150 mL cannot be metered."""
+    _with_tanks(temp_config, {"fertilizer": {
+        "fert_ml_per_cycle": 150, "min_dose_seconds": 1.0, "pump_lph": 800,
+    }})
+    with pytest.raises(ConfigError) as exc:
+        load_config(temp_config)
+    assert "fert_ml_per_cycle" in str(exc.value)
+    assert "minimum" in str(exc.value)
+
+
+def test_config_rejects_pesticide_dose_below_minimum_meterable_volume(temp_config):
+    _with_tanks(temp_config, {"pesticide": {
+        "ml_per_activation": 100, "min_dose_seconds": 1.0, "pump_lph": 800,
+    }})
+    with pytest.raises(ConfigError) as exc:
+        load_config(temp_config)
+    assert "ml_per_activation" in str(exc.value)
+
+
+def test_config_rejects_fertigation_window_shorter_than_min_pulse(temp_config):
+    _with_tanks(temp_config, {"fertilizer": {
+        "fert_ml_per_cycle": 250, "min_dose_seconds": 1.0,
+        "min_watering_seconds_for_fert": 0.5,
+    }})
+    with pytest.raises(ConfigError) as exc:
+        load_config(temp_config)
+    assert "min_watering_seconds_for_fert" in str(exc.value)
+
+
+def test_config_accepts_meterable_dose(temp_config):
+    _with_tanks(temp_config, {
+        "fertilizer": {
+            "fert_ml_per_cycle": 250, "min_dose_seconds": 1.0, "pump_lph": 800,
+            "min_watering_seconds_for_fert": 15,
+        },
+        "pesticide": {"ml_per_activation": 250, "min_dose_seconds": 1.0, "pump_lph": 800},
+    })
+    cfg = load_config(temp_config)
+    assert cfg["tanks"]["fertilizer"]["fert_ml_per_cycle"] == 250
+    assert cfg["tanks"]["pesticide"]["ml_per_activation"] == 250
+
 def _set_soil_moisture_key(temp_config, key, value):
     import yaml
     with open(temp_config) as f:

@@ -216,6 +216,77 @@
           </div>
         </section>
 
+        <section id="tanks" class="card collapsible">
+          <header class="card-header"><h2>Tanks (Fertilizer &amp; Pesticide)</h2></header>
+          <div class="card-body">
+            <div class="tank-grid">
+              <div class="tank-card" data-tank="fertilizer">
+                <h3>Fertilizer Tank</h3>
+                <div class="tank-row"><span>Status:</span> <span id="tank-fert-status">—</span></div>
+                <div class="tank-row"><span>Type:</span> <span id="tank-fert-type">—</span></div>
+                <div class="tank-row"><span>NPK:</span> <span id="tank-fert-npk">—</span></div>
+                <div class="tank-row"><span>Remaining:</span> <span id="tank-fert-rem">—</span></div>
+                <div class="tank-row"><span>Runtime left:</span> <span id="tank-fert-rt">—</span></div>
+                <div class="tank-row"><span>Last refill:</span> <span id="tank-fert-lastref">—</span></div>
+                <div class="tank-row"><span>Last fertilized:</span> <span id="tank-fert-lastfert">—</span></div>
+                <div class="tank-row"><span>Cooldown:</span> <span id="tank-fert-cool">—</span></div>
+                <div class="tank-row"><span>Auto:</span> <span id="tank-fert-auto">—</span></div>
+                <div class="tank-row"><span>Mode:</span> <span id="tank-fert-mode">—</span></div>
+                <div class="tank-row"><span>Dose:</span> <span id="tank-fert-dose">—</span></div>
+                <div class="tank-row"><span>Blocked:</span> <span id="tank-fert-blocked" class="tank-blocked">—</span></div>
+                <div class="tank-form">
+                  <details>
+                    <summary>Mark refilled</summary>
+                    <div class="form-row"><label>Type</label><input id="fert-type" type="text" placeholder="NPK 10-10-10"></div>
+                    <div class="form-row"><label>N</label><input id="fert-n" type="number" step="0.1" value="0"></div>
+                    <div class="form-row"><label>P</label><input id="fert-p" type="number" step="0.1" value="0"></div>
+                    <div class="form-row"><label>K</label><input id="fert-k" type="number" step="0.1" value="0"></div>
+                    <div class="form-row"><label>Total mL</label><input id="fert-total" type="number" step="1" value="5000"></div>
+                    <div class="form-row"><label>Tank capacity mL</label><input id="fert-cap" type="number" step="1" value="5000"></div>
+                    <div class="form-row"><label>mL per cycle</label><input id="fert-mlcycle" type="number" step="10" value="250"></div>
+                    <div class="form-row"><label>Soak days</label><input id="fert-soak" type="number" step="1" value="7"></div>
+                    <div class="form-row"><label>Mode</label><select id="fert-mode"><option value="with_watering" selected>with_watering</option><option value="separate">separate</option></select></div>
+                    <button id="btn-fert-refill" class="btn btn-secondary btn-sm" type="button">Mark Fertilizer Refreshed</button>
+                  </details>
+                </div>
+                <div class="card-actions">
+                  <button id="btn-fert-auto-on" class="btn btn-secondary btn-sm" type="button">Enable Auto</button>
+                  <button id="btn-fert-auto-off" class="btn btn-secondary btn-sm" type="button">Disable Auto</button>
+                </div>
+              </div>
+
+              <div class="tank-card" data-tank="pesticide">
+                <h3>Pesticide Tank</h3>
+                <div class="tank-row"><span>Status:</span> <span id="tank-pest-status">—</span></div>
+                <div class="tank-row"><span>Type:</span> <span id="tank-pest-type">—</span></div>
+                <div class="tank-row"><span>Remaining:</span> <span id="tank-pest-rem">—</span></div>
+                <div class="tank-row"><span>Runtime left:</span> <span id="tank-pest-rt">—</span></div>
+                <div class="tank-row"><span>Last refill:</span> <span id="tank-pest-lastref">—</span></div>
+                <div class="tank-row"><span>Last pesticided:</span> <span id="tank-pest-lastpest">—</span></div>
+                <div class="tank-row"><span>Cooldown:</span> <span id="tank-pest-cool">—</span></div>
+                <div class="tank-row"><span>Auto:</span> <span id="tank-pest-auto">—</span></div>
+                <div class="tank-row"><span>Monthly:</span> <span id="tank-pest-month">—</span></div>
+                <div class="tank-row"><span>Blocked:</span> <span id="tank-pest-blocked" class="tank-blocked">—</span></div>
+                <div class="tank-form">
+                  <details>
+                    <summary>Mark refilled</summary>
+                    <div class="form-row"><label>Type</label><input id="pest-type" type="text" placeholder="Neem"></div>
+                    <div class="form-row"><label>Total mL</label><input id="pest-total" type="number" step="1" value="2000"></div>
+                    <div class="form-row"><label>Tank capacity mL</label><input id="pest-cap" type="number" step="1" value="2000"></div>
+                    <div class="form-row"><label>mL/activation</label><input id="pest-mlact" type="number" step="1" value="250"></div>
+                    <div class="form-row"><label>Soak days</label><input id="pest-soak" type="number" step="1" value="0"></div>
+                    <button id="btn-pest-refill" class="btn btn-secondary btn-sm" type="button">Mark Pesticide Refreshed</button>
+                  </details>
+                </div>
+                <div class="card-actions">
+                  <button id="btn-pest-auto-on" class="btn btn-secondary btn-sm" type="button">Enable Auto</button>
+                  <button id="btn-pest-auto-off" class="btn btn-secondary btn-sm" type="button">Disable Auto</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section id="recommendation" class="card collapsible">
           <header class="card-header"><h2>Fertilizer Recommendation</h2></header>
           <div class="card-body">

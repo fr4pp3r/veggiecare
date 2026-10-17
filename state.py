@@ -124,6 +124,68 @@ class SystemState:
 
         self.db: dict[str, Any] = {"ok": True, "error": None, "last_write": None}
         self.automation: dict[str, Any] = {"running": False, "paused": False}
+
+        # Tank state (fertilizer and pesticide) - volume-based tracking, no hardware sensors
+        self.tanks: dict[str, Any] = {
+            "fertilizer": {
+                "status": "unknown",  # unknown|full|low|empty|blocked
+                "enabled": False,
+                "auto_enabled": False,
+                "fertilizer_type": "",
+                "npk_n": 0,
+                "npk_p": 0,
+                "npk_k": 0,
+                "total_ml": 0,
+                "ml_dispensed_since_refill": 0.0,
+                "ml_remaining_est": 0.0,
+                "pump_lph": 800,
+                "mode": "with_watering",  # with_watering|separate
+                "fert_ml_per_cycle": 250,
+                "min_ml_for_cycle": 250,
+                "min_dose_seconds": 1.0,  # physical floor (800 L/H ≈ 222 mL/s)
+                "soak_days": 7,
+                "last_fertilized_at": None,
+                "last_refill_at": None,
+                "cooldown_until_at": None,
+                "blocked_reason": None,
+                "blocked_until_at": None,
+                "tank_capacity_ml": 5000,
+                "min_watering_seconds_for_fert": 15,
+            },
+            "pesticide": {
+                "status": "unknown",  # unknown|full|low|empty|blocked
+                "enabled": False,
+                "auto_enabled": False,
+                "pesticide_type": "",
+                "total_ml": 0,
+                "ml_dispensed_since_refill": 0.0,
+                "ml_remaining_est": 0.0,
+                "pump_lph": 800,
+                "mode": "separate",
+                "ml_per_activation": 250,
+                "min_dose_seconds": 1.0,
+                "soak_days": 0,
+                "last_pesticided_at": None,
+                "last_refill_at": None,
+                "cooldown_until_at": None,
+                "blocked_reason": None,
+                "blocked_until_at": None,
+                "tank_capacity_ml": 2000,
+                "max_activations_per_month": 2,
+            },
+        }
+
+        # Load tank config if present
+        tanks_cfg = config.get("tanks", {}) if isinstance(config, dict) else {}
+        if isinstance(tanks_cfg, dict):
+            for tank_name in ("fertilizer", "pesticide"):
+                if tank_name in tanks_cfg:
+                    tc = tanks_cfg[tank_name]
+                    if isinstance(tc, dict):
+                        for k, v in tc.items():
+                            if k in self.tanks[tank_name]:
+                                self.tanks[tank_name][k] = v
+
         self._alerts: deque = deque(maxlen=30)
         # Monotonic id source for alerts, so the dashboard can track
         # read/dismissed notifications across polls.
@@ -216,6 +278,13 @@ class SystemState:
         with self._lock:
             self.recommendation.update(fields)
 
+    def update_tank(self, tank_name: str, **fields: Any) -> None:
+        with self._lock:
+            if tank_name in self.tanks:
+                for k, v in fields.items():
+                    if k in self.tanks[tank_name]:
+                        self.tanks[tank_name][k] = v
+
     def set_automation(self, running: bool | None = None, paused: bool | None = None) -> None:
         with self._lock:
             if running is not None:
@@ -264,4 +333,5 @@ class SystemState:
                 "automation": dict(self.automation),
                 "alerts": list(self._alerts),
                 "recommendation": dict(self.recommendation),
+                "tanks": {k: dict(v) for k, v in self.tanks.items()},
             }

@@ -137,6 +137,62 @@ class Database:
                     self._conn.commit()
             except sqlite3.Error as exc:
                 raise DatabaseError(f"cannot migrate database {self.path}: {exc}") from exc
+            try:
+                cols = [r[1] for r in self._conn.execute("PRAGMA table_info(system_events)").fetchall()]
+                # ensure columns exist
+            except sqlite3.Error:
+                pass
+            # add tank event tables if missing
+            self._conn.executescript("""
+                CREATE TABLE IF NOT EXISTS tank_refills (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    tank TEXT NOT NULL,
+                    tank_type TEXT,
+                    npk_n REAL DEFAULT 0,
+                    npk_p REAL DEFAULT 0,
+                    npk_k REAL DEFAULT 0,
+                    total_ml REAL DEFAULT 0,
+                    ml_per_dose_or_cycle REAL DEFAULT 0,
+                    max_doses INTEGER DEFAULT 0,
+                    mode TEXT,
+                    pump_lph REAL DEFAULT 0
+                );
+                CREATE TABLE IF NOT EXISTS tank_auto_doses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    tank TEXT NOT NULL,
+                    tank_type TEXT,
+                    npk_n REAL DEFAULT 0,
+                    npk_p REAL DEFAULT 0,
+                    npk_k REAL DEFAULT 0,
+                    ml_dispensed REAL DEFAULT 0,
+                    activation_seconds REAL DEFAULT 0,
+                    doses_used_before INTEGER DEFAULT 0,
+                    doses_used_after INTEGER DEFAULT 0,
+                    ml_remaining_est REAL DEFAULT 0,
+                    combined_with_watering INTEGER DEFAULT 0,
+                    mode TEXT
+                );
+                CREATE TABLE IF NOT EXISTS tank_auto_dose_blocked (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    tank TEXT NOT NULL,
+                    reason TEXT,
+                    cooldown_until_at TEXT,
+                    blocked_until_at TEXT,
+                    doses_used INTEGER DEFAULT 0,
+                    max_doses INTEGER DEFAULT 0,
+                    ml_remaining_est REAL DEFAULT 0
+                );
+                CREATE TABLE IF NOT EXISTS tank_auto_dose_deferred (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    tank TEXT NOT NULL,
+                    reason TEXT
+                );
+            """)
+            self._conn.commit()
         except sqlite3.Error as exc:
             raise DatabaseError(f"cannot open database {self.path}: {exc}") from exc
 
@@ -259,6 +315,88 @@ class Database:
             "INSERT INTO config_changes (timestamp, key, old_value, new_value, source) VALUES (?, ?, ?, ?, ?)",
             (timestamp or _now(), key, old_value, new_value, source),
         )
+
+    def insert_tank_refill(self, tank: str, timestamp: str | None = None, **fields: Any) -> None:
+        self._execute(
+            """INSERT INTO tank_refills
+               (timestamp, tank, tank_type, npk_n, npk_p, npk_k,
+                total_ml, ml_per_dose_or_cycle, max_doses, mode, pump_lph)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (timestamp or _now(), tank,
+             fields.get("tank_type", tank),
+             float(fields.get("npk_n", 0) or 0),
+             float(fields.get("npk_p", 0) or 0),
+             float(fields.get("npk_k", 0) or 0),
+             float(fields.get("total_ml", 0) or 0),
+             float(fields.get("ml_per_dose_or_cycle", 0) or 0),
+             int(fields.get("max_doses", 0) or 0),
+             fields.get("mode"),
+             float(fields.get("pump_lph", 0) or 0)),
+        )
+
+    def insert_tank_auto_dose(self, tank: str, timestamp: str | None = None, **fields: Any) -> None:
+        self._execute(
+            """INSERT INTO tank_auto_doses
+               (timestamp, tank, tank_type, npk_n, npk_p, npk_k,
+                ml_dispensed, activation_seconds, doses_used_before, doses_used_after,
+                ml_remaining_est, combined_with_watering, mode)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (timestamp or _now(), tank,
+             fields.get("tank_type", tank),
+             float(fields.get("npk_n", 0) or 0),
+             float(fields.get("npk_p", 0) or 0),
+             float(fields.get("npk_k", 0) or 0),
+             float(fields.get("ml_dispensed", 0) or 0),
+             float(fields.get("activation_seconds", 0) or 0),
+             int(fields.get("doses_used_before", 0) or 0),
+             int(fields.get("doses_used_after", 0) or 0),
+             float(fields.get("ml_remaining_est", 0) or 0),
+             1 if fields.get("combined_with_watering") else 0,
+             fields.get("mode")),
+        )
+
+    def insert_tank_auto_dose_blocked(self, tank: str, reason: str,
+                                      timestamp: str | None = None, **fields: Any) -> None:
+        self._execute(
+            """INSERT INTO tank_auto_dose_blocked
+               (timestamp, tank, reason, cooldown_until_at, blocked_until_at,
+                doses_used, max_doses, ml_remaining_est)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (timestamp or _now(), tank, reason,
+             fields.get("cooldown_until_at"),
+             fields.get("blocked_until_at"),
+             int(fields.get("doses_used", 0) or 0),
+             int(fields.get("max_doses", 0) or 0),
+             float(fields.get("ml_remaining_est", 0) or 0)),
+        )
+
+    def recent_tank_refills(self, limit: int = 20) -> list[dict]:
+        rows = self._query(
+            "SELECT * FROM tank_refills ORDER BY id DESC LIMIT ?", (limit,),
+        )
+        return [dict(r) for r in rows]
+
+    def recent_tank_doses(self, limit: int = 20) -> list[dict]:
+        rows = self._query(
+            "SELECT * FROM tank_auto_doses ORDER BY id DESC LIMIT ?", (limit,),
+        )
+        return [dict(r) for r in rows]
+
+    def latest_tank_refill(self, tank: str) -> dict | None:
+        """Most recent refill declared for *tank*, or None."""
+        rows = self._query(
+            "SELECT * FROM tank_refills WHERE tank = ? ORDER BY id DESC LIMIT 1",
+            (tank,),
+        )
+        return dict(rows[0]) if rows else None
+
+    def tank_doses_since(self, tank: str, since_ts: str) -> list[dict]:
+        """Auto-doses for *tank* recorded at or after *since_ts* (oldest first)."""
+        rows = self._query(
+            "SELECT * FROM tank_auto_doses WHERE tank = ? AND timestamp >= ? ORDER BY id ASC",
+            (tank, since_ts),
+        )
+        return [dict(r) for r in rows]
 
     # ------------------------------------------------------------------
     # queries

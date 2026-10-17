@@ -93,6 +93,54 @@ soil_moisture:
     moisture: 45
 
 # ------------------------------------------------------------------
+# Tanks — volume-based tracking (no level sensors required)
+# ------------------------------------------------------------------
+# All relay-driven pumps are rated at 800 L/H (222.2 mL/s). "Tank refilled"
+# is the source of truth: the operator declares what is present and how
+# much. The controller computes consumption from relay run time:
+#     ml_dispensed = (pump_lph * 1000 * activation_seconds) / 3600
+# (the x1000 turns litres into millilitres).
+# Doses are volume-driven: the target mL decides the pulse length, and the
+# relay's own activation_duration_seconds acts only as an upper ceiling.
+# min_dose_seconds is the physical floor — at 800 L/H one second is ~222 mL,
+# so a smaller target cannot be metered and is rejected at refill time.
+# Fertilizer is dispensed WITH watering (fertigation); pesticide stays a
+# separate response. Fertilizer honors a soak cooldown (days) between
+# applications because soil takes time to absorb nutrients.
+tanks:
+  fertilizer:
+    enabled: false              # opt-in; nothing auto-doses until true
+    auto_enabled: false         # must also be enabled from the dashboard
+    require_refill_confirmation: true
+    fertilizer_type: ""         # e.g. "NPK 10-10-10"
+    npk_n: 0                    # declared N%
+    npk_p: 0                    # declared P%
+    npk_k: 0                    # declared K%
+    total_ml: 0                 # declared amount present at last refill
+    tank_capacity_ml: 5000      # physical tank size (sanity check)
+    pump_lph: 800               # pump flow rate
+    mode: with_watering         # with_watering | separate
+    fert_ml_per_cycle: 250      # target mL per fertigation (>= min_dose_seconds worth)
+    min_ml_for_cycle: 250       # block if less than this remains
+    min_dose_seconds: 1.0       # physical floor: 800 L/H ≈ 222 mL per second
+    soak_days: 7                # days to wait between fertilizations
+    min_watering_seconds_for_fert: 15
+  pesticide:
+    enabled: false
+    auto_enabled: false
+    require_refill_confirmation: true
+    pesticide_type: ""
+    total_ml: 0
+    tank_capacity_ml: 2000
+    pump_lph: 800
+    mode: separate              # pesticide stays independent of watering
+    ml_per_activation: 250      # volume-based dose (drives pulse length)
+    min_dose_seconds: 1.0       # physical floor: 800 L/H ≈ 222 mL per second
+    soak_days: 0                # typically not needed for pesticide
+    # NOTE: max_activations_per_month lives under pest_detection above — that
+    # is the single enforced limit. The tank state mirrors it for display.
+
+# ------------------------------------------------------------------
 # Relays - gpiozero LED abstraction
 # ------------------------------------------------------------------
 relays:

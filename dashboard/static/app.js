@@ -257,6 +257,8 @@
 
     els.moistMeta.textContent = `Last reading: ${fmtTime(moist.timestamp)} | Last watering: —`;
 
+    // Tanks (fertilizer + pesticide)
+    renderTanks(data.tanks);
     // Relays
     renderRelays(data.relays);
 
@@ -277,6 +279,65 @@
 
     // Notification bell (same alerts feed, separate read/dismissed state)
     renderNotifications(data.alerts);
+  }
+
+  function renderTanks(tanks) {
+    if (!tanks) return;
+    const fmtDate = (d) => d ? new Date(d).toLocaleString() : '-';
+    const fmtLeft = (sec) => {
+      if (sec === null || sec === undefined || isNaN(sec) || sec < 0) return '-';
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = Math.floor(sec % 60);
+      if (h > 0) return h + 'h ' + m + 'm ' + s + 's';
+      if (m > 0) return m + 'm ' + s + 's';
+      return s + 's';
+    };
+    const mlToSec = (ml, lph) => (lph > 0 ? (ml * 3.6) / lph : 0);
+    const coolFmt = (until) => {
+      if (!until) return 'Ready';
+      const cd = new Date(until).getTime() - Date.now();
+      return cd > 0 ? fmtLeft(cd / 1000) : 'Ready';
+    };
+
+    const fert = tanks.fertilizer || {};
+    document.getElementById('tank-fert-status').textContent = fert.status || '-';
+    document.getElementById('tank-fert-type').textContent = fert.fertilizer_type || '-';
+    document.getElementById('tank-fert-npk').textContent =
+      (fert.npk_n || 0) + '/' + (fert.npk_p || 0) + '/' + (fert.npk_k || 0);
+    const fertRem = fert.ml_remaining_est || 0;
+    document.getElementById('tank-fert-rem').textContent =
+      fertRem.toFixed(0) + ' mL / ' + (fert.total_ml || 0).toFixed(0) + ' mL';
+    document.getElementById('tank-fert-rt').textContent =
+      '~' + mlToSec(fertRem, fert.pump_lph).toFixed(1) + 's @ ' + (fert.pump_lph || 800) + ' L/H';
+    document.getElementById('tank-fert-lastref').textContent = fmtDate(fert.last_refill_at);
+    document.getElementById('tank-fert-lastfert').textContent = fmtDate(fert.last_fertilized_at);
+    document.getElementById('tank-fert-cool').textContent = coolFmt(fert.cooldown_until_at);
+    document.getElementById('tank-fert-auto').textContent = fert.auto_enabled ? 'ON' : 'OFF';
+    document.getElementById('tank-fert-mode').textContent = fert.mode || '-';
+    const fertDose = fert.fert_ml_per_cycle || 0;
+    document.getElementById('tank-fert-dose').textContent =
+      fertDose.toFixed(0) + ' mL (~' + mlToSec(fertDose, fert.pump_lph).toFixed(2) + 's)';
+    const fertBlocked = document.getElementById('tank-fert-blocked');
+    fertBlocked.textContent = fert.blocked_reason || '—';
+    fertBlocked.classList.toggle('is-blocked', Boolean(fert.blocked_reason));
+
+    const pest = tanks.pesticide || {};
+    document.getElementById('tank-pest-status').textContent = pest.status || '-';
+    document.getElementById('tank-pest-type').textContent = pest.pesticide_type || '-';
+    const pestRem = pest.ml_remaining_est || 0;
+    document.getElementById('tank-pest-rem').textContent =
+      pestRem.toFixed(0) + ' mL / ' + (pest.total_ml || 0).toFixed(0) + ' mL';
+    document.getElementById('tank-pest-rt').textContent =
+      '~' + mlToSec(pestRem, pest.pump_lph).toFixed(1) + 's @ ' + (pest.pump_lph || 800) + ' L/H';
+    document.getElementById('tank-pest-lastref').textContent = fmtDate(pest.last_refill_at);
+    document.getElementById('tank-pest-lastpest').textContent = fmtDate(pest.last_pesticided_at);
+    document.getElementById('tank-pest-cool').textContent = coolFmt(pest.cooldown_until_at);
+    document.getElementById('tank-pest-auto').textContent = pest.auto_enabled ? 'ON' : 'OFF';
+    document.getElementById('tank-pest-month').textContent = pest.max_activations_per_month || '-';
+    const pestBlocked = document.getElementById('tank-pest-blocked');
+    pestBlocked.textContent = pest.blocked_reason || '—';
+    pestBlocked.classList.toggle('is-blocked', Boolean(pest.blocked_reason));
   }
 
   function renderRelays(relays) {
@@ -1426,6 +1487,65 @@
   els.btnResume.addEventListener('click', resumeAutomation);
   els.btnSimPest.addEventListener('click', simulatePest);
   els.btnWateringReset?.addEventListener('click', resetWateringFault);
+
+  // Tanks handlers
+  const btnFertRef = document.getElementById('btn-fert-refill');
+  if (btnFertRef) {
+    btnFertRef.addEventListener('click', async () => {
+      const body = {
+        fertilizer_type: document.getElementById('fert-type').value,
+        npk_n: parseFloat(document.getElementById('fert-n').value || '0'),
+        npk_p: parseFloat(document.getElementById('fert-p').value || '0'),
+        npk_k: parseFloat(document.getElementById('fert-k').value || '0'),
+        total_ml: parseFloat(document.getElementById('fert-total').value || '0'),
+        tank_capacity_ml: parseFloat(document.getElementById('fert-cap').value || '0') || null,
+        fert_ml_per_cycle: parseFloat(document.getElementById('fert-mlcycle').value || '250'),
+        soak_days: parseFloat(document.getElementById('fert-soak').value || '7'),
+        mode: document.getElementById('fert-mode').value,
+      };
+      const res = await fetch(API + '/tanks/fertilizer/refill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const j = await res.json().catch(() => ({ ok: false }));
+      alert(j.message || (j.ok ? 'Refilled' : 'Failed'));
+    });
+  }
+  const btnPestRef = document.getElementById('btn-pest-refill');
+  if (btnPestRef) {
+    btnPestRef.addEventListener('click', async () => {
+      const body = {
+        pesticide_type: document.getElementById('pest-type').value,
+        total_ml: parseFloat(document.getElementById('pest-total').value || '0'),
+        tank_capacity_ml: parseFloat(document.getElementById('pest-cap').value || '0') || null,
+        ml_per_activation: parseFloat(document.getElementById('pest-mlact').value || '250'),
+        soak_days: parseFloat(document.getElementById('pest-soak').value || '0'),
+      };
+      const res = await fetch(API + '/tanks/pesticide/refill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const j = await res.json().catch(() => ({ ok: false }));
+      alert(j.message || (j.ok ? 'Refilled' : 'Failed'));
+    });
+  }
+  document.getElementById('btn-fert-auto-on')?.addEventListener('click', () => tankAuto('fertilizer', true));
+  document.getElementById('btn-fert-auto-off')?.addEventListener('click', () => tankAuto('fertilizer', false));
+  document.getElementById('btn-pest-auto-on')?.addEventListener('click', () => tankAuto('pesticide', true));
+  document.getElementById('btn-pest-auto-off')?.addEventListener('click', () => tankAuto('pesticide', false));
+
+  async function tankAuto(tank, enabled) {
+    const res = await fetch(API + '/tanks/' + tank + '/auto', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: enabled }),
+    });
+    const j = await res.json().catch(() => ({}));
+    alert(j.message || 'Done');
+  }
+
   els.btnScanStepper?.addEventListener('click', () => forcePestMonitor('stepper'));
   els.btnScanCamera?.addEventListener('click', () => forcePestMonitor('camera'));
   els.btnSaveSettings.addEventListener('click', saveSettings);

@@ -130,6 +130,9 @@ class RelayController:
         self._relays: dict[int, dict[str, Any]] = {}
         self._lock = threading.RLock()
         self._stop = threading.Event()
+        # Woken whenever a deadline changes so the watchdog can sleep until
+        # the nearest deadline instead of a fixed step (sub-second accuracy).
+        self._wake = threading.Event()
         self._thread: threading.Thread | None = None
 
         # Build relay objects — all start OFF.
@@ -183,6 +186,9 @@ class RelayController:
             entry["duration"] = dur
             entry["activated_at"] = datetime.now().isoformat(timespec="seconds")
             entry["trigger"] = trigger
+            # Wake the watchdog so a short pulse is measured from now, not
+            # from whenever the watchdog last happened to wake up.
+            self._wake.set()
             logger.info(
                 "Relay %s activated for %.0fs (trigger=%s)", relay_id, dur, trigger,
             )
@@ -198,6 +204,7 @@ class RelayController:
             entry["deadline"] = None
             entry["activated_at"] = None
             entry["trigger"] = None
+            self._wake.set()
 
     def all_off(self, reason: str = "manual") -> None:
         """Force every relay off (emergency stop)."""
@@ -246,10 +253,21 @@ class RelayController:
 
     def _watchdog_loop(self) -> None:
         while not self._stop.is_set():
+            # Clear before inspecting so an activation arriving during this
+            # pass is not lost (it will re-wake us immediately). Re-check stop
+            # afterwards: shutdown() may have set the wake event in between, in
+            # which case clearing it would cost a full step of exit latency.
+            self._wake.clear()
+            if self._stop.is_set():
+                break
             now = time.monotonic()
+            next_deadline: float | None = None
             with self._lock:
                 for entry in self._relays.values():
-                    if entry["deadline"] is not None and now >= entry["deadline"]:
+                    deadline = entry["deadline"]
+                    if deadline is None:
+                        continue
+                    if now >= deadline:
                         relay_id = entry["relay"].relay_id
                         relay_name = entry["relay"].name
                         entry["relay"].off()
@@ -265,7 +283,18 @@ class RelayController:
                                 self._on_watchdog_off(relay_id, relay_name)
                             except Exception as exc:
                                 logger.error("Watchdog callback failed: %s", exc)
-            self._stop.wait(timeout=self._watchdog_step)
+                    else:
+                        next_deadline = (
+                            deadline if next_deadline is None
+                            else min(next_deadline, deadline)
+                        )
+            # Sleep until the nearest deadline so short activations are
+            # honored precisely; never sleep longer than the check step.
+            if next_deadline is None:
+                timeout = self._watchdog_step
+            else:
+                timeout = max(0.0, min(self._watchdog_step, next_deadline - time.monotonic()))
+            self._wake.wait(timeout=timeout)
 
     # ------------------------------------------------------------------
     # shutdown
@@ -275,6 +304,7 @@ class RelayController:
         """Emergency OFF + stop watchdog."""
         self.all_off(reason="shutdown")
         self._stop.set()
+        self._wake.set()  # release the watchdog immediately
         if self._thread is not None:
             self._thread.join(timeout=3.0)
 

@@ -63,6 +63,23 @@ def test_watchdog_auto_off_after_duration():
         ctrl.shutdown()
 
 
+def test_watchdog_honours_short_pulse_between_checks():
+    """A sub-step activation must still stop near its deadline.
+
+    The watchdog sleeps until the nearest deadline (bounded by the check
+    step), so a 0.3 s pulse with a 1 s step does not run for a full second.
+    Dosing accuracy depends on this.
+    """
+    ctrl = RelayController(_cfg(1, check_step=1.0), simulate=True)
+    try:
+        ctrl.activate(1, duration=0.3, trigger="test")
+        assert ctrl.is_active(1) is True
+        time.sleep(0.6)
+        assert ctrl.is_active(1) is False
+    finally:
+        ctrl.shutdown()
+
+
 def test_watchdog_caps_at_auto_off_watchdog():
     ctrl = RelayController(_cfg(1, auto_off=0.5, check_step=0.05), simulate=True)
     try:

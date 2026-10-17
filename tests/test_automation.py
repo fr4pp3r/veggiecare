@@ -75,6 +75,23 @@ def _make_config(tmp_path=None):
             "mock": {"mode": "none", "sequence": [], "random": {"detection_probability": 0.25, "confidence_min": 0.50, "confidence_max": 0.98}},
         },
         "camera": {"enabled": False, "capture_interval_seconds": 1},
+        "tanks": {
+            "pesticide": {
+                "enabled": True,
+                "auto_enabled": True,
+                "pesticide_type": "test",
+                "total_ml": 2000,
+                "ml_dispensed_since_refill": 0.0,
+                "ml_remaining_est": 2000,
+                "status": "full",
+                "tank_capacity_ml": 2000,
+                "pump_lph": 800,
+                "mode": "separate",
+                "ml_per_activation": 250,
+                "min_dose_seconds": 1.0,
+                "soak_days": 0,
+            },
+        },
     }
 
 

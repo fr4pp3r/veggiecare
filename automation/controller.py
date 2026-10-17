@@ -30,7 +30,7 @@ import tempfile
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -131,6 +131,11 @@ class AutomationController:
         # Month in which the pest-response monthly-limit alert last fired, so
         # the blocked alert is emitted once per month, not every cycle.
         self._pest_blocked_alert_month: str | None = None
+        # Serialises the pest-response gate (limit check -> activate -> record).
+        # The pest worker and the dashboard's simulate route are different
+        # threads, so without this both could pass the monthly check and
+        # double-activate (and double-debit the tank).
+        self._pest_response_lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # external wiring
@@ -159,6 +164,7 @@ class AutomationController:
         if self._thread is not None and self._thread.is_alive():
             return
         self._seed_watering_state()
+        self._seed_tank_state()
         self._stop.clear()
         self._thread = threading.Thread(
             target=self._run, daemon=True, name="automation",
@@ -347,6 +353,61 @@ class AutomationController:
                 logger.error("NPK recommendation failed: %s", exc)
                 self._state.update_recommendation(recommended=False, error=str(exc))
 
+        # Explain why a due fertilization has not been applied yet.
+        self._refresh_fertilization_gate_reason()
+
+    @staticmethod
+    def _soak_active(ft: dict) -> bool:
+        """True while the fertilizer soak cooldown is still in effect."""
+        if float(ft.get("soak_days", 0) or 0) <= 0:
+            return False
+        until = ft.get("cooldown_until_at")
+        if not until:
+            return False
+        try:
+            return datetime.fromisoformat(str(until)) > datetime.now()
+        except Exception:
+            return False
+
+    def _refresh_fertilization_gate_reason(self) -> None:
+        """Keep the dashboard's "why is nothing being applied?" answer honest.
+
+        With ``mode: with_watering`` a dose only rides along with an irrigation
+        cycle, so a full tank can sit unused while nutrients stay deficient.
+        Record the specific blocking reason instead of leaving it to guesswork.
+        """
+        tanks = getattr(self._state, "tanks", None)
+        if not isinstance(tanks, dict):
+            return
+        ft = tanks.get("fertilizer", {}) or {}
+        if not ft.get("enabled") or not ft.get("auto_enabled"):
+            return
+        if ft.get("mode") != "with_watering":
+            return
+
+        if not (self._state.recommendation or {}).get("recommended"):
+            # Nothing is due; clear a stale deferral note.
+            if ft.get("blocked_reason") == "fertilization_deferred_no_watering":
+                self._state.update_tank("fertilizer", blocked_reason=None)
+            return
+
+        pump_lph = float(ft.get("pump_lph", 800) or 800)
+        required_ml = float(ft.get("fert_ml_per_cycle", 250) or 250)
+        min_dose_seconds = float(ft.get("min_dose_seconds", 1.0) or 0)
+        dose_seconds = max(self._seconds_for_ml(required_ml, pump_lph), min_dose_seconds)
+        dose_ml = self._ml_from_seconds(dose_seconds, pump_lph)
+
+        if float(ft.get("ml_remaining_est", 0) or 0) <= 0:
+            reason = "fertilizer_needs_refill"
+        elif float(ft.get("ml_remaining_est", 0) or 0) < dose_ml:
+            reason = "fertilizer_insufficient_for_cycle"
+        elif self._soak_active(ft):
+            reason = "fertilizer_soak_cooldown"
+        else:
+            reason = "fertilization_deferred_no_watering"
+        if ft.get("blocked_reason") != reason:
+            self._state.update_tank("fertilizer", blocked_reason=reason)
+
     # ------------------------------------------------------------------
     # Moisture reading + watering rule
     # ------------------------------------------------------------------
@@ -513,6 +574,150 @@ class AutomationController:
                 cooldown_seconds=cooldown,
                 cooldown_remaining_seconds=cooldown,
             )
+            try:
+                self._maybe_apply_fertigation(now, duration)
+            except Exception:
+                pass
+
+    def _maybe_apply_fertigation(self, now: float, watering_duration: float) -> None:
+        tanks = getattr(self._state, "tanks", {})
+        ft = tanks.get("fertilizer", {}) if isinstance(tanks, dict) else {}
+        if not ft.get("enabled") or not ft.get("auto_enabled"):
+            return
+        if ft.get("mode") != "with_watering":
+            # Fertilizer is configured for a standalone dose but only
+            # fertigation is implemented; say so rather than failing silently.
+            self._block_fertilization(
+                "fertilizer_mode_separate_unsupported", self._fert_available(ft),
+                record_db=False,
+            )
+            return
+        available_ml = self._fert_available(ft)
+        pump_lph = float(ft.get("pump_lph", 800) or 800)
+        required_ml = float(ft.get("fert_ml_per_cycle", 250) or 250)
+        min_dose_seconds = float(ft.get("min_dose_seconds", 1.0) or 0)
+        min_sec = float(ft.get("min_watering_seconds_for_fert", 15) or 15)
+        soak_days = float(ft.get("soak_days", 0) or 0)
+        # Physical floor: an 800 L/H pump cannot reliably meter below the
+        # minimum pulse, so never command less than min_dose_seconds.
+        dose_seconds = max(self._seconds_for_ml(required_ml, pump_lph), min_dose_seconds)
+        if available_ml <= 0:
+            self._block_fertilization("fertilizer_needs_refill", available_ml)
+            return
+        if self._soak_active(ft):
+            # Recurring during the soak window: surface it, but do not fill
+            # the audit table with one row per watering cycle.
+            self._block_fertilization(
+                "fertilizer_soak_cooldown", available_ml, record_db=False,
+            )
+            return
+        if watering_duration < max(min_sec, dose_seconds):
+            # The irrigation window cannot fit even one metered dose. Truncating
+            # would command a sub-floor pulse, so skip instead.
+            self._block_fertilization(
+                "fertilizer_watering_too_short", available_ml, record_db=False,
+            )
+            return
+        dose_ml = self._ml_from_seconds(dose_seconds, pump_lph)
+        if available_ml < dose_ml:
+            self._block_fertilization(
+                "fertilizer_insufficient_for_cycle", available_ml, dose_ml,
+            )
+            return
+        # activate fertilizer relay (Relay 1) for dose_seconds
+        fert_cfg = self._cfg.get("relays", {}).get("items", [])
+        fert_relay_id = None
+        for item in fert_cfg:
+            if str(item.get("name", "")).lower() in ("fertilizer", "npk/fertilizer"):
+                fert_relay_id = int(item.get("id", 1))
+                break
+        if fert_relay_id is None:
+            fert_relay_id = 1
+        activated = self._relays.activate(fert_relay_id, duration=dose_seconds, trigger="automatic")
+        if not activated:
+            self._block_fertilization("fertilizer_relay_unavailable", available_ml)
+            return
+        ts = datetime.now().isoformat(timespec="seconds")
+        # activate() clamps to the watchdog cap — bill what will really pump.
+        effective = self._effective_relay_duration(fert_relay_id, dose_seconds)
+        ml_disp = self._ml_from_seconds(effective, pump_lph)
+        self._state.set_relay(
+            fert_relay_id, state="on", activated_at=ts, duration=effective,
+        )
+        try:
+            self._db.insert_relay_activation(
+                relay_id=fert_relay_id,
+                relay_name="fertilizer",
+                trigger_type="automatic",
+                duration_seconds=int(round(effective)),
+                source="automation_fertigation",
+                timestamp=ts,
+            )
+        except DatabaseError as exc:
+            logger.error("DB write failed (fert relay activation): %s", exc)
+        ml_remain = available_ml - ml_disp
+        if ml_remain < 0:
+            ml_remain = 0
+        updates = {
+            "ml_dispensed_since_refill": float(ft.get("ml_dispensed_since_refill", 0) or 0) + ml_disp,
+            "ml_remaining_est": ml_remain,
+            "last_fertilized_at": ts,
+            "cooldown_until_at": (
+                datetime.now() + timedelta(days=soak_days)
+            ).isoformat(timespec="seconds"),
+            "blocked_reason": None,
+            "blocked_until_at": None,
+            "status": (
+                "empty" if ml_remain <= 0
+                else "low" if ml_remain < dose_ml
+                else "full"
+            ),
+        }
+        self._state.update_tank("fertilizer", **updates)
+        try:
+            self._db.insert_tank_auto_dose(
+                "fertilizer",
+                tank_type="fertilizer",
+                ml_dispensed=ml_disp,
+                activation_seconds=effective,
+                combined_with_watering=True,
+                mode="with_watering",
+                ml_remaining_est=ml_remain,
+            )
+        except Exception:
+            pass
+        self._log_event(
+            "INFO", "fertigation",
+            f"Fertigation applied {ml_disp:.0f} mL ({effective:.2f}s)",
+        )
+
+    @staticmethod
+    def _fert_available(ft: dict) -> float:
+        """Current fertilizer stock estimate (mL)."""
+        try:
+            return float(ft.get("ml_remaining_est", 0) or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _block_fertilization(self, reason: str, available_ml: float,
+                             required_ml: float | None = None,
+                             record_db: bool = True) -> None:
+        """Record a blocked fertilization without raising."""
+        if record_db:
+            try:
+                self._db.insert_tank_auto_dose_blocked(
+                    "fertilizer", reason, ml_remaining_est=available_ml,
+                )
+            except Exception:
+                pass
+        self._state.update_tank(
+            "fertilizer", blocked_reason=reason, blocked_until_at=None,
+        )
+        self._log_event(
+            "WARNING", "fertigation",
+            f"Fertilization blocked: {reason} "
+            f"(available {available_ml:.0f} mL, needs {required_ml or 0:.0f} mL)",
+        )
 
     def _evaluate_watering_response(self, value: Any, error: Any, cfg: dict) -> None:
         """Evaluate whether the last watering had an effect."""
@@ -569,6 +774,82 @@ class AutomationController:
         except DatabaseError as exc:
             logger.error("DB query failed (watering seconds today): %s", exc)
             return 0.0
+
+    def _seed_tank_state(self) -> None:
+        """Rebuild tank stock/cooldown from the DB so a restart cannot bypass them.
+
+        The declared refill is the baseline; every auto-dose since then is the
+        consumption. Without this the in-memory estimate would silently reset
+        to the config default on restart — and, worse, an in-effect soak
+        cooldown would be cleared, allowing an immediate re-application.
+        """
+        for tank in ("fertilizer", "pesticide"):
+            try:
+                updates = self._seed_one_tank(tank)
+            except DatabaseError as exc:
+                logger.error("Failed to seed %s tank state: %s", tank, exc)
+                continue
+            if updates:
+                self._state.update_tank(tank, **updates)
+                logger.info(
+                    "Seeded %s tank from DB: %.0f mL remaining (%.0f mL dispensed)",
+                    tank, updates["ml_remaining_est"], updates["ml_dispensed_since_refill"],
+                )
+
+    def _seed_one_tank(self, tank: str) -> dict[str, Any] | None:
+        refill = self._db.latest_tank_refill(tank)
+        if not refill:
+            return None
+        total_ml = float(refill.get("total_ml") or 0)
+        if total_ml <= 0:
+            return None
+
+        refill_ts = str(refill.get("timestamp") or "")
+        doses = self._db.tank_doses_since(tank, refill_ts) if refill_ts else []
+        dispensed = sum(float(d.get("ml_dispensed") or 0) for d in doses)
+        remaining = max(0.0, total_ml - dispensed)
+
+        cfg = self._state.tanks.get(tank, {}) or {}
+        dose_key = "fert_ml_per_cycle" if tank == "fertilizer" else "ml_per_activation"
+        dose_size = float(refill.get("ml_per_dose_or_cycle") or 0) or float(cfg.get(dose_key, 250) or 250)
+        if remaining <= 0:
+            status = "empty"
+        elif remaining < dose_size:
+            status = "low"
+        else:
+            status = "full"
+
+        updates: dict[str, Any] = {
+            "enabled": True,
+            "total_ml": total_ml,
+            "ml_dispensed_since_refill": dispensed,
+            "ml_remaining_est": remaining,
+            "status": status,
+            "last_refill_at": refill_ts or None,
+            "pump_lph": float(refill.get("pump_lph") or 0) or float(cfg.get("pump_lph", 800) or 800),
+        }
+        declared_type = str(refill.get("tank_type") or "")
+        if declared_type and declared_type != tank:
+            updates["fertilizer_type" if tank == "fertilizer" else "pesticide_type"] = declared_type
+        if tank == "fertilizer":
+            updates["npk_n"] = float(refill.get("npk_n") or 0)
+            updates["npk_p"] = float(refill.get("npk_p") or 0)
+            updates["npk_k"] = float(refill.get("npk_k") or 0)
+        else:
+            # Keep the dashboard's mirror in step with the enforced cap.
+            updates["max_activations_per_month"] = self._pest_max_activations_per_month()
+
+        if doses:
+            last_at = str(doses[-1].get("timestamp") or "")
+            updates["last_fertilized_at" if tank == "fertilizer" else "last_pesticided_at"] = last_at or None
+            soak_days = float(cfg.get("soak_days", 0) or 0)
+            if soak_days > 0 and last_at:
+                try:
+                    until = datetime.fromisoformat(last_at) + timedelta(days=soak_days)
+                    updates["cooldown_until_at"] = until.isoformat(timespec="seconds")
+                except (TypeError, ValueError):
+                    logger.warning("Could not parse last dose time %r for %s", last_at, tank)
+        return updates
 
     def _seed_watering_state(self) -> None:
         """Seed cooldown/budget state from DB so a restart cannot bypass them."""
@@ -959,6 +1240,25 @@ class AutomationController:
     # manual / external activation
     # ------------------------------------------------------------------
 
+    def _tank_for_relay(self, relay_id: int) -> str | None:
+        """Return the tank name a relay drives, if any."""
+        entry = self._relays.get(relay_id)
+        if not entry:
+            return None
+        name = str(entry.get("name", "")).lower()
+        if name in ("fertilizer", "npk/fertilizer"):
+            return "fertilizer"
+        if name in ("pest_response", "pesticide"):
+            return "pesticide"
+        return None
+
+    def _tank_tracking_on(self, tank_name: str) -> bool:
+        tanks = getattr(self._state, "tanks", {})
+        if not isinstance(tanks, dict):
+            return False
+        t = tanks.get(tank_name, {}) or {}
+        return bool(t.get("enabled") and t.get("auto_enabled"))
+
     def activate_relay(
         self,
         relay_id: int,
@@ -975,13 +1275,40 @@ class AutomationController:
             return False, f"Relay {relay_id} not found"
 
         duration = duration or entry.get("duration", float(self._cfg.get("relays", {}).get("default_duration_seconds", 60)))
+        tank_name = self._tank_for_relay(relay_id)
+        tracking = tank_name is not None and self._tank_tracking_on(tank_name)
+
+        # Gate on stock when the relay is tracked by a tank.
+        if tracking:
+            if tank_name == "fertilizer":
+                ft = self._state.tanks.get("fertilizer", {}) or {}
+                pump_lph = float(ft.get("pump_lph", 800) or 800)
+                dose_ml = self._ml_from_seconds(duration, pump_lph)
+                available = float(ft.get("ml_remaining_est", 0) or 0)
+                if available < dose_ml:
+                    return False, (
+                        f"Insufficient fertilizer stock "
+                        f"({available:.0f} mL < {dose_ml:.0f} mL)"
+                    )
+            else:
+                pt = self._state.tanks.get("pesticide", {}) or {}
+                pump_lph = float(pt.get("pump_lph", 800) or 800)
+                dose_ml = self._ml_from_seconds(duration, pump_lph)
+                available = float(pt.get("ml_remaining_est", 0) or 0)
+                if available < dose_ml:
+                    return False, (
+                        f"Insufficient pesticide stock "
+                        f"({available:.0f} mL < {dose_ml:.0f} mL)"
+                    )
+
         activated = self._relays.activate(relay_id, duration=duration, trigger=trigger)
         if not activated:
             return False, "Relay activation failed"
 
         ts = datetime.now().isoformat(timespec="seconds")
+        effective = self._effective_relay_duration(relay_id, duration)
         self._state.set_relay(
-            relay_id, state="on", activated_at=ts, duration=duration,
+            relay_id, state="on", activated_at=ts, duration=effective,
         )
 
         relay_name = entry.get("name", f"relay_{relay_id}")
@@ -990,7 +1317,7 @@ class AutomationController:
                 relay_id=relay_id,
                 relay_name=relay_name,
                 trigger_type="manual" if trigger == "manual" else "automatic",
-                duration_seconds=int(duration),
+                duration_seconds=int(round(effective)),
                 source=source,
                 timestamp=ts,
             )
@@ -998,9 +1325,78 @@ class AutomationController:
         except DatabaseError as exc:
             logger.error("DB write failed (manual activation): %s", exc)
 
-        msg = f"Relay {relay_id} ({relay_name}) activated for {duration:.0f}s"
+        msg = f"Relay {relay_id} ({relay_name}) activated for {effective:.0f}s"
         self._state.add_alert("INFO", msg, source)
         self._log_event("INFO", source, msg)
+
+        # Debit tank stock for a tracked, manually-activated relay.
+        if tracking:
+            if tank_name == "fertilizer":
+                ft = self._state.tanks.get("fertilizer", {}) or {}
+                pump_lph = float(ft.get("pump_lph", 800) or 800)
+                dose_ml = self._ml_from_seconds(effective, pump_lph)
+                available = float(ft.get("ml_remaining_est", 0) or 0)
+                remaining = max(0.0, available - dose_ml)
+                soak_days = float(ft.get("soak_days", 0) or 0)
+                updates = {
+                    "ml_dispensed_since_refill": float(ft.get("ml_dispensed_since_refill", 0) or 0) + dose_ml,
+                    "ml_remaining_est": remaining,
+                    "last_fertilized_at": ts,
+                    "status": (
+                        "empty" if remaining <= 0
+                        else "low" if remaining < float(ft.get("fert_ml_per_cycle", 250) or 250)
+                        else "full"
+                    ),
+                    "blocked_reason": None,
+                }
+                if soak_days > 0:
+                    updates["cooldown_until_at"] = (
+                        datetime.now() + timedelta(days=soak_days)
+                    ).isoformat(timespec="seconds")
+                self._state.update_tank("fertilizer", **updates)
+                try:
+                    self._db.insert_tank_auto_dose(
+                        "fertilizer",
+                        tank_type=str(ft.get("fertilizer_type") or "fertilizer"),
+                        ml_dispensed=dose_ml,
+                        activation_seconds=effective,
+                        combined_with_watering=False,
+                        mode="manual",
+                        ml_remaining_est=remaining,
+                    )
+                except Exception:
+                    pass
+            else:
+                pt = self._state.tanks.get("pesticide", {}) or {}
+                pump_lph = float(pt.get("pump_lph", 800) or 800)
+                dose_ml = self._ml_from_seconds(effective, pump_lph)
+                available = float(pt.get("ml_remaining_est", 0) or 0)
+                remaining = max(0.0, available - dose_ml)
+                updates = {
+                    "ml_dispensed_since_refill": float(pt.get("ml_dispensed_since_refill", 0) or 0) + dose_ml,
+                    "ml_remaining_est": remaining,
+                    "last_pesticided_at": ts,
+                    "status": (
+                        "empty" if remaining <= 0
+                        else "low" if remaining < float(pt.get("ml_per_activation", 250) or 250)
+                        else "full"
+                    ),
+                    "blocked_reason": None,
+                }
+                self._state.update_tank("pesticide", **updates)
+                try:
+                    self._db.insert_tank_auto_dose(
+                        "pesticide",
+                        tank_type=str(pt.get("pesticide_type") or "pesticide"),
+                        ml_dispensed=dose_ml,
+                        activation_seconds=effective,
+                        combined_with_watering=False,
+                        mode="manual",
+                        ml_remaining_est=remaining,
+                    )
+                except Exception:
+                    pass
+
         return True, msg
 
     def emergency_stop(self, source: str = "dashboard") -> None:
@@ -1139,7 +1535,30 @@ class AutomationController:
 
     def _activate_pest_response(self, relay_id: int, duration: float, ts: str, source: str) -> None:
         """Activate the pest response relay, subject to the monthly limit."""
-        max_per_month = int(self._cfg.get("pest_detection", {}).get("max_activations_per_month", 2))
+        with self._pest_response_lock:
+            self._activate_pest_response_locked(relay_id, duration, ts, source)
+
+    def _activate_pest_response_locked(self, relay_id: int, duration: float, ts: str,
+                                       source: str) -> None:
+        # Fail closed: when tank tracking is off, an unmetered pulse would
+        # dispense the full configured relay duration (~26.7 L at 800 L/H).
+        # Refuse rather than spray an uncontrolled volume.
+        if not self._pesticide_tracking_on():
+            self._block_pesticide("pesticide_tracking_disabled", 0.0)
+            return
+
+        # The monthly cap has a single source of truth (pest_detection); the
+        # copy on the tank is a read-only mirror shown on the dashboard.
+        max_per_month = self._pest_max_activations_per_month()
+        # When tank tracking is on, the dose is volume-driven. At 800 L/H a
+        # 120 s relay pulse would dispense ~26 L, so the configured duration
+        # becomes an upper safety ceiling rather than the dose itself.
+        duration = self._pesticide_effective_duration(duration)
+        if duration <= 0:
+            # Tracking is on but even the minimum pulse will not fit inside
+            # the configured relay ceiling — refuse rather than under-dose.
+            self._block_pesticide("pesticide_dose_exceeds_relay_limit", 0.0)
+            return
 
         # Monthly activation limit — the ONLY limit in the system. NPK alerts
         # and soil-moisture watering are never limited.
@@ -1165,30 +1584,170 @@ class AutomationController:
                 self._log_event("WARNING", source, reason)
             return
 
+        # Tank gate (fail-closed): if pesticide tracking is on and the stock
+        # cannot cover the dose, do not activate — and do not burn a monthly
+        # allowance.
+        if self._pesticide_tracking_on() and not self._pesticide_has_stock(duration):
+            self._block_pesticide("pesticide_insufficient_for_cycle", duration)
+            return
+
         activated = self._relays.activate(
             relay_id, duration=duration, trigger="automatic",
         )
-        if activated:
-            self._state.set_relay(
-                relay_id, state="on", activated_at=ts, duration=duration,
+        if not activated:
+            self._block_pesticide("pesticide_relay_unavailable", duration)
+            return
+
+        # activate() clamps to the watchdog cap, so bill the volume that will
+        # actually be pumped rather than what we asked for.
+        effective = self._effective_relay_duration(relay_id, duration)
+        self._state.set_relay(
+            relay_id, state="on", activated_at=ts, duration=effective,
+        )
+        try:
+            self._db.insert_relay_activation(
+                relay_id=relay_id,
+                relay_name="pest_response",
+                trigger_type="automatic",
+                duration_seconds=int(round(effective)),
+                source=source,
+                timestamp=ts,
+            )
+        except DatabaseError as exc:
+            logger.error("DB write failed (relay activation): %s", exc)
+        try:
+            new_used = self._db.count_relay_activations(relay_id, year, month)
+        except DatabaseError:
+            new_used = used + 1
+        self._state.update_usage(month=month_str, used=new_used, max_activations=max_per_month)
+        self._log_event("INFO", source, f"Relay {relay_id} activated ({effective:.2f}s)")
+        # Only now, after a confirmed activation, consume tank stock.
+        self._record_pesticide_dose(effective, ts, source)
+
+    def _effective_relay_duration(self, relay_id: int, requested: float) -> float:
+        """Duration the relay will actually run for.
+
+        ``RelayController.activate`` clamps the request to
+        ``auto_off_watchdog_seconds`` and stores the clamped value on the
+        entry; bill against that so stock is not debited for volume that was
+        never pumped.
+        """
+        entry = self._relays.get(relay_id) or {}
+        try:
+            actual = float(entry.get("duration") or 0)
+        except (TypeError, ValueError):
+            actual = 0.0
+        return actual if actual > 0 else requested
+
+    def _pest_max_activations_per_month(self) -> int:
+        """Single source of truth for the monthly pest-response cap."""
+        try:
+            cap = int(self._cfg.get("pest_detection", {}).get("max_activations_per_month", 2))
+        except (TypeError, ValueError):
+            cap = 2
+        return max(0, cap)
+
+    # ------------------------------------------------------------------
+    # pesticide tank helpers
+    # ------------------------------------------------------------------
+
+    def _pesticide_tank(self) -> dict:
+        tanks = getattr(self._state, "tanks", {})
+        if isinstance(tanks, dict):
+            return tanks.get("pesticide", {}) or {}
+        return {}
+
+    def _pesticide_tracking_on(self) -> bool:
+        pt = self._pesticide_tank()
+        return bool(pt.get("enabled") and pt.get("auto_enabled"))
+
+    def _pesticide_effective_duration(self, ceiling_seconds: float) -> float:
+        """Seconds to run the pesticide pump for one volume-based dose.
+
+        Falls back to the configured ceiling when tracking is off. The
+        minimum-pulse floor is never violated: if the ceiling cannot fit even
+        the floor, ``0.0`` is returned so the caller refuses the dose instead
+        of under-dosing or over-running the ceiling.
+        """
+        if not self._pesticide_tracking_on():
+            return ceiling_seconds
+        pt = self._pesticide_tank()
+        pump_lph = float(pt.get("pump_lph", 800) or 800)
+        target_ml = float(pt.get("ml_per_activation", 250) or 250)
+        min_dose = float(pt.get("min_dose_seconds", 1.0) or 0)
+        secs = max(self._seconds_for_ml(target_ml, pump_lph), min_dose)
+        if ceiling_seconds > 0 and secs > ceiling_seconds:
+            return 0.0
+        return secs
+
+    def _pesticide_has_stock(self, duration: float) -> bool:
+        pt = self._pesticide_tank()
+        pump_lph = float(pt.get("pump_lph", 800) or 800)
+        dose_ml = self._ml_from_seconds(duration, pump_lph)
+        return float(pt.get("ml_remaining_est", 0) or 0) >= dose_ml
+
+    def _block_pesticide(self, reason: str, duration: float) -> None:
+        pt = self._pesticide_tank()
+        available = float(pt.get("ml_remaining_est", 0) or 0)
+        try:
+            self._db.insert_tank_auto_dose_blocked(
+                "pesticide", reason, ml_remaining_est=available,
+            )
+        except Exception:
+            pass
+        self._state.update_tank("pesticide", blocked_reason=reason)
+        self._log_event(
+            "WARNING", "pest_response",
+            f"Pesticide blocked: {reason} (available {available:.0f} mL)",
+        )
+
+    def _record_pesticide_dose(self, duration: float, ts: str, source: str) -> None:
+        """Consume pesticide stock after a confirmed activation."""
+        if not self._pesticide_tracking_on():
+            return
+        try:
+            pt = self._pesticide_tank()
+            pump_lph = float(pt.get("pump_lph", 800) or 800)
+            ml_per_act = float(pt.get("ml_per_activation", 250) or 250)
+            soak_days = float(pt.get("soak_days", 0) or 0)
+            ml_disp = self._ml_from_seconds(duration, pump_lph)
+            ml_remain = float(pt.get("ml_remaining_est", 0) or 0) - ml_disp
+            if ml_remain < 0:
+                ml_remain = 0
+            self._state.update_tank(
+                "pesticide",
+                ml_dispensed_since_refill=float(pt.get("ml_dispensed_since_refill", 0) or 0) + ml_disp,
+                ml_remaining_est=ml_remain,
+                last_pesticided_at=ts,
+                cooldown_until_at=(
+                    datetime.now() + timedelta(days=soak_days)
+                ).isoformat(timespec="seconds"),
+                blocked_reason=None,
+                blocked_until_at=None,
+                status=(
+                    "empty" if ml_remain <= 0
+                    else "low" if ml_remain < ml_per_act
+                    else "full"
+                ),
             )
             try:
-                self._db.insert_relay_activation(
-                    relay_id=relay_id,
-                    relay_name="pest_response",
-                    trigger_type="automatic",
-                    duration_seconds=int(duration),
-                    source=source,
-                    timestamp=ts,
+                self._db.insert_tank_auto_dose(
+                    "pesticide",
+                    tank_type="pesticide",
+                    ml_dispensed=ml_disp,
+                    activation_seconds=duration,
+                    combined_with_watering=False,
+                    mode="separate",
+                    ml_remaining_est=ml_remain,
                 )
-            except DatabaseError as exc:
-                logger.error("DB write failed (relay activation): %s", exc)
-            try:
-                new_used = self._db.count_relay_activations(relay_id, year, month)
-            except DatabaseError:
-                new_used = used + 1
-            self._state.update_usage(month=month_str, used=new_used, max_activations=max_per_month)
-            self._log_event("INFO", source, f"Relay {relay_id} activated ({duration:.0f}s)")
+            except Exception:
+                pass
+            self._log_event(
+                "INFO", "pest_response",
+                f"Pesticide dispensed {ml_disp:.0f} mL ({duration:.2f}s)",
+            )
+        except Exception as exc:
+            logger.error("Pesticide tank accounting failed: %s", exc)
 
     # ------------------------------------------------------------------
     # helpers
@@ -1212,3 +1771,200 @@ class AutomationController:
         self._last_db_check = now
         ok, err = self._db.health()
         self._state.update_db(ok=ok, error=err)
+
+    # ------------------------------------------------------------------
+    # tank methods (volume-based, 800 L/H)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _ml_from_seconds(seconds: float, pump_lph: float) -> float:
+        """Volume (mL) dispensed by *pump_lph* over *seconds*.
+
+        ``pump_lph`` is litres/hour, so the conversion carries a x1000 to
+        get millilitres. This is the single source of truth for the
+        volume<->time relationship used by both tanks.
+        """
+        if seconds <= 0 or pump_lph <= 0:
+            return 0.0
+        return (pump_lph * 1000.0 * seconds) / 3600.0
+
+    @classmethod
+    def _seconds_for_ml(cls, ml: float, pump_lph: float) -> float:
+        """Seconds of pump time needed to dispense *ml* at *pump_lph*."""
+        if ml <= 0 or pump_lph <= 0:
+            return 0.0
+        return (ml * 3600.0) / (pump_lph * 1000.0)
+
+    @staticmethod
+    def _resolve(kwargs: dict, key: str, existing: dict, default: Any) -> Any:
+        """Prefer an explicit kwarg, then current tank state, then *default*.
+
+        A refill is a patch: an operator topping up the same fertilizer should
+        not silently reset the soak window or the dose size just because the
+        caller omitted a field.
+        """
+        value = kwargs.get(key)
+        if value is None:
+            value = existing.get(key)
+        if value is None:
+            value = default
+        return value
+
+    def refill_fertilizer_tank(self, **kwargs) -> tuple[bool, str]:
+        try:
+            existing = dict(self._state.tanks.get("fertilizer", {}))
+            fertilizer_type = str(kwargs.get("fertilizer_type", "") or existing.get("fertilizer_type", "")).strip()
+            npk_n = float(kwargs.get("npk_n", 0) or 0)
+            npk_p = float(kwargs.get("npk_p", 0) or 0)
+            npk_k = float(kwargs.get("npk_k", 0) or 0)
+            total_ml = float(kwargs.get("total_ml", 0) or 0)
+            tank_capacity_ml = kwargs.get("tank_capacity_ml")
+            pump_lph = float(self._resolve(kwargs, "pump_lph", existing, 800) or 800)
+            fert_ml_per_cycle = float(self._resolve(kwargs, "fert_ml_per_cycle", existing, 250))
+            min_dose_seconds = float(self._resolve(kwargs, "min_dose_seconds", existing, 1.0) or 0)
+            soak_days = float(self._resolve(kwargs, "soak_days", existing, 0) or 0)
+            mode = str(self._resolve(kwargs, "mode", existing, "with_watering")).lower()
+            if mode not in ("separate", "with_watering"):
+                mode = "with_watering"
+
+            if total_ml <= 0:
+                return False, "total_ml must be > 0"
+            if fert_ml_per_cycle <= 0:
+                return False, "fert_ml_per_cycle must be > 0"
+            if pump_lph <= 0:
+                return False, "pump_lph must be > 0"
+            # Fail closed on an un-meterable dose: at 800 L/H a 1 s pulse is
+            # ~222 mL, so a smaller target cannot be dispensed accurately.
+            min_ml = self._ml_from_seconds(min_dose_seconds, pump_lph)
+            if fert_ml_per_cycle < min_ml:
+                return False, (
+                    f"fert_ml_per_cycle must be at least {min_ml:.0f} mL "
+                    f"({min_dose_seconds:.1f}s at {pump_lph:.0f} L/H)"
+                )
+
+            max_doses = int(total_ml // fert_ml_per_cycle) if fert_ml_per_cycle > 0 else 0
+            updates = {
+                "fertilizer_type": fertilizer_type,
+                "npk_n": npk_n,
+                "npk_p": npk_p,
+                "npk_k": npk_k,
+                "total_ml": total_ml,
+                "ml_dispensed_since_refill": 0.0,
+                "ml_remaining_est": total_ml,
+                "pump_lph": pump_lph,
+                "fert_ml_per_cycle": fert_ml_per_cycle,
+                "min_ml_for_cycle": fert_ml_per_cycle,
+                "min_dose_seconds": min_dose_seconds,
+                "soak_days": soak_days,
+                "mode": mode,
+                "last_refill_at": datetime.now().isoformat(timespec="seconds"),
+                "last_fertilized_at": self._state.tanks["fertilizer"].get("last_fertilized_at"),
+                "cooldown_until_at": self._state.tanks["fertilizer"].get("cooldown_until_at"),
+                "blocked_reason": None,
+                "blocked_until_at": None,
+                "status": "full" if max_doses >= 1 else "empty",
+                "enabled": True,
+            }
+            if tank_capacity_ml is not None and tank_capacity_ml > 0:
+                updates["tank_capacity_ml"] = tank_capacity_ml
+
+            self._state.update_tank("fertilizer", **updates)
+            try:
+                self._db.insert_tank_refill(
+                    "fertilizer",
+                    tank_type=fertilizer_type or "fertilizer",
+                    npk_n=npk_n,
+                    npk_p=npk_p,
+                    npk_k=npk_k,
+                    total_ml=total_ml,
+                    ml_per_dose_or_cycle=fert_ml_per_cycle,
+                    max_doses=max_doses,
+                    mode=mode,
+                    pump_lph=pump_lph,
+                )
+            except Exception:
+                pass
+            return True, f"Fertilizer tank refilled ({total_ml:.0f} mL, {max_doses} cycles)"
+        except Exception as exc:
+            return False, f"Refill failed: {exc}"
+
+    def refill_pesticide_tank(self, **kwargs) -> tuple[bool, str]:
+        try:
+            existing = dict(self._state.tanks.get("pesticide", {}))
+            pesticide_type = str(kwargs.get("pesticide_type", "") or existing.get("pesticide_type", "")).strip()
+            total_ml = float(kwargs.get("total_ml", 0) or 0)
+            tank_capacity_ml = kwargs.get("tank_capacity_ml")
+            pump_lph = float(self._resolve(kwargs, "pump_lph", existing, 800) or 800)
+            ml_per_activation = float(self._resolve(kwargs, "ml_per_activation", existing, 250))
+            min_dose_seconds = float(self._resolve(kwargs, "min_dose_seconds", existing, 1.0) or 0)
+            soak_days = float(self._resolve(kwargs, "soak_days", existing, 0) or 0)
+            # Display mirror only. The enforced cap has a single source of truth
+            # (pest_detection.max_activations_per_month) so the dashboard can
+            # never advertise a limit the controller does not actually apply.
+            max_activations_per_month = self._pest_max_activations_per_month()
+
+            if total_ml <= 0:
+                return False, "total_ml must be > 0"
+            if ml_per_activation <= 0:
+                return False, "ml_per_activation must be > 0"
+            if pump_lph <= 0:
+                return False, "pump_lph must be > 0"
+            min_ml = self._ml_from_seconds(min_dose_seconds, pump_lph)
+            if ml_per_activation < min_ml:
+                return False, (
+                    f"ml_per_activation must be at least {min_ml:.0f} mL "
+                    f"({min_dose_seconds:.1f}s at {pump_lph:.0f} L/H)"
+                )
+
+            max_doses = int(total_ml // ml_per_activation) if ml_per_activation > 0 else 0
+            updates = {
+                "pesticide_type": pesticide_type,
+                "total_ml": total_ml,
+                "ml_dispensed_since_refill": 0.0,
+                "ml_remaining_est": total_ml,
+                "pump_lph": pump_lph,
+                "ml_per_activation": ml_per_activation,
+                "min_dose_seconds": min_dose_seconds,
+                "soak_days": soak_days,
+                "max_activations_per_month": max_activations_per_month,
+                "last_refill_at": datetime.now().isoformat(timespec="seconds"),
+                "last_pesticided_at": self._state.tanks["pesticide"].get("last_pesticided_at"),
+                "cooldown_until_at": self._state.tanks["pesticide"].get("cooldown_until_at"),
+                "blocked_reason": None,
+                "blocked_until_at": None,
+                "status": "full" if max_doses >= 1 else "empty",
+                "enabled": True,
+            }
+            if tank_capacity_ml is not None and tank_capacity_ml > 0:
+                updates["tank_capacity_ml"] = tank_capacity_ml
+
+            self._state.update_tank("pesticide", **updates)
+            try:
+                self._db.insert_tank_refill(
+                    "pesticide",
+                    tank_type=pesticide_type or "pesticide",
+                    total_ml=total_ml,
+                    ml_per_dose_or_cycle=ml_per_activation,
+                    max_doses=max_doses,
+                    mode="separate",
+                    pump_lph=pump_lph,
+                )
+            except Exception:
+                pass
+            return True, f"Pesticide tank refilled ({total_ml:.0f} mL, {max_doses} activations)"
+        except Exception as exc:
+            return False, f"Refill failed: {exc}"
+
+    def set_tank_auto(self, tank_name: str, enabled: bool) -> tuple[bool, str]:
+        tank_name = tank_name.lower()
+        if tank_name not in ("fertilizer", "pesticide"):
+            return False, "Invalid tank"
+        self._state.update_tank(tank_name, auto_enabled=bool(enabled))
+        return True, f"{tank_name} auto {'enabled' if enabled else 'disabled'}"
+
+    def set_tank_enabled(self, tank_name: str, enabled: bool) -> tuple[bool, str]:
+        tank_name = tank_name.lower()
+        if tank_name not in ("fertilizer", "pesticide"):
+            return False, "Invalid tank"
+        self._state.update_tank(tank_name, enabled=bool(enabled))
+        return True, f"{tank_name} {'enabled' if enabled else 'disabled'}"
