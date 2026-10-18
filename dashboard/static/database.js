@@ -4,7 +4,6 @@
   const API = '/api';
   const els = {
     btnExportJson: document.getElementById('btn-export-json'),
-    btnDownloadDb: document.getElementById('btn-download-db'),
     btnRefreshDb: document.getElementById('btn-refresh-db'),
     exportStatus: document.getElementById('export-status'),
     tableList: document.getElementById('table-list'),
@@ -43,7 +42,7 @@
   }
 
   function escapeHtml(s) {
-    return s.replace(/[&<>"']/g, c => ({ '&': '&', '<': '<', '>': '>', '"': '"', "'": '\u2019' }[c]));
+    return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
   function formatValue(val) {
@@ -73,7 +72,7 @@
     const html = tables.map(name => `
       <div class="table-item" data-table="${escapeHtml(name)}">
         <span class="table-name">${escapeHtml(name)}</span>
-        <span class="table-badge">${name}</span>
+        <span class="table-badge">${escapeHtml(name)}</span>
         <button class="btn btn-ghost btn-sm table-view-btn" type="button" data-table="${escapeHtml(name)}">View</button>
       </div>
     `).join('');
@@ -262,44 +261,7 @@
     }
   }
 
-  async function downloadDatabase() {
-    hideStatus();
-    els.btnDownloadDb.disabled = true;
-    els.btnDownloadDb.textContent = 'Preparing\u2026';
-
-    try {
-      const res = await fetch(`${API}/database/download`);
-      if (!res.ok) {
-        let msg = `${res.status} ${res.statusText}`;
-        try { const j = await res.json(); if (j.error) msg = j.error; } catch (_) {}
-        throw new Error(msg);
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-
-      const now = new Date();
-      const timestamp = now.toISOString().slice(0, 19).replace('T', '-').replace(/:/g, '-');
-      const filename = `veggiecare-${timestamp}.db`;
-
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      showStatus(`Downloaded ${filename}`);
-    } catch (e) {
-      showStatus(`Download failed: ${escapeHtml(e.message)}`, true);
-    } finally {
-      els.btnDownloadDb.disabled = false;
-      els.btnDownloadDb.textContent = 'Download SQLite Database';
-    }
-  }
-
   // Event listeners
-  els.btnDownloadDb.addEventListener('click', downloadDatabase);
   els.btnRefreshDb.addEventListener('click', loadTables);
   els.tablePageSize.addEventListener('change', handlePageSizeChange);
   els.tableViewerContent.addEventListener('click', handlePaginationClick);

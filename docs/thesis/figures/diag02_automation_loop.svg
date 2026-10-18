@@ -1,0 +1,159 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2480" height="1960" viewBox="0 0 1240 980" font-family="Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#374151"/>
+    </marker>
+  </defs>
+  <rect width="1240" height="980" fill="#FFFFFF"/>
+  <text x="620" y="32" text-anchor="middle" font-size="20" font-weight="700" fill="#111827">VeggieCare Automation Control Loop</text>
+  <text x="620" y="52" text-anchor="middle" font-size="12" fill="#6B7280">Three independent rules evaluated by the background controller, each on its own schedule</text>
+
+  <!-- top lifecycle -->
+  <rect x="270" y="70" width="700" height="34" rx="8" fill="#F0FDF4" stroke="#059669" stroke-width="1.5"/>
+  <text x="620" y="92" text-anchor="middle" font-size="12.5" font-weight="700" fill="#065F46">Start: load and validate config.yaml &#183; all relays forced OFF &#183; restore watering/tank state from database</text>
+  <line x1="620" y1="104" x2="620" y2="128" stroke="#374151" stroke-width="1.6" marker-end="url(#arr)"/>
+
+  <rect x="270" y="130" width="700" height="30" rx="8" fill="#ECFDF5" stroke="#059669" stroke-width="1.5"/>
+  <text x="620" y="150" text-anchor="middle" font-size="12.5" font-weight="700" fill="#111827">AutomationController background thread &#8212; tick every 1 s (loop until stopped)</text>
+  <line x1="620" y1="160" x2="620" y2="186" stroke="#374151" stroke-width="1.6" marker-end="url(#arr)"/>
+
+  <rect x="20" y="188" width="1200" height="26" rx="6" fill="#F3F4F6" stroke="#9CA3AF" stroke-width="1.2"/>
+  <text x="620" y="206" text-anchor="middle" font-size="12" font-weight="700" fill="#374151">Each tick evaluates the three rules below (readings, alerts, and activations are persisted to SQLite; the dashboard updates within seconds)</text>
+
+  <!-- ============ COLUMN A: NPK ============ -->
+  <text x="210" y="240" text-anchor="middle" font-size="12.5" font-weight="700" fill="#1E40AF">Rule 1 &#8212; Nutrient (NPK) Monitoring</text>
+  <polygon points="210,252 340,292 210,332 80,292" fill="#DBEAFE" stroke="#2563EB" stroke-width="1.5"/>
+  <text x="210" y="288" text-anchor="middle" font-size="11.5" fill="#111827">NPK reading due?</text>
+  <text x="210" y="304" text-anchor="middle" font-size="10.5" fill="#374151">(every 5 min, RS485)</text>
+  <line x1="210" y1="332" x2="210" y2="360" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="222" y="350" font-size="10" fill="#6B7280">yes</text>
+
+  <polygon points="210,362 350,408 210,454 70,408" fill="#DBEAFE" stroke="#2563EB" stroke-width="1.5"/>
+  <text x="210" y="403" text-anchor="middle" font-size="11.5" fill="#111827">Any of N, P, K below</text>
+  <text x="210" y="419" text-anchor="middle" font-size="11.5" fill="#111827">its threshold?</text>
+  <line x1="210" y1="454" x2="210" y2="486" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="222" y="476" font-size="10" fill="#6B7280">yes</text>
+  <line x1="350" y1="408" x2="368" y2="408" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="354" y="400" font-size="10" fill="#6B7280">no</text>
+
+  <rect x="55" y="488" width="310" height="58" rx="8" fill="#FEF3C7" stroke="#D97706" stroke-width="1.4"/>
+  <text x="210" y="510" text-anchor="middle" font-size="11.5" font-weight="700" fill="#111827">WARNING alert (transition only)</text>
+  <text x="210" y="528" text-anchor="middle" font-size="10.5" fill="#374151">fires once when entering low state &#8212; no relay is</text>
+  <text x="210" y="540" text-anchor="middle" font-size="10.5" fill="#374151">activated automatically; the farmer decides</text>
+  <line x1="210" y1="546" x2="210" y2="568" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="55" y="570" width="310" height="58" rx="8" fill="#FFFFFF" stroke="#34D399" stroke-width="1.4"/>
+  <text x="210" y="592" text-anchor="middle" font-size="11.5" font-weight="700" fill="#111827">Fertilizer recommendation</text>
+  <text x="210" y="610" text-anchor="middle" font-size="10.5" fill="#374151">AI/rule engine: product, dosage (g per 10 L),</text>
+  <text x="210" y="622" text-anchor="middle" font-size="10.5" fill="#374151">nutrient deficits, priority &#8212; shown on dashboard</text>
+  <line x1="210" y1="628" x2="210" y2="650" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="55" y="652" width="310" height="40" rx="8" fill="#F9FAFB" stroke="#9CA3AF" stroke-width="1.2"/>
+  <text x="210" y="670" text-anchor="middle" font-size="11" fill="#111827">Log NPK reading + recommendation</text>
+  <text x="210" y="684" text-anchor="middle" font-size="10.5" fill="#374151">to npk_readings / npk_recommendations</text>
+
+  <!-- ============ COLUMN B: WATERING ============ -->
+  <text x="620" y="240" text-anchor="middle" font-size="12.5" font-weight="700" fill="#065F46">Rule 2 &#8212; Soil Moisture &amp; Automatic Irrigation</text>
+  <polygon points="620,252 745,292 620,332 495,292" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+  <text x="620" y="288" text-anchor="middle" font-size="11.5" fill="#111827">Moisture reading due?</text>
+  <text x="620" y="304" text-anchor="middle" font-size="10.5" fill="#374151">(every 5&#8211;30 s, SPI/ADC)</text>
+  <line x1="620" y1="332" x2="620" y2="360" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="632" y="350" font-size="10" fill="#6B7280">yes</text>
+
+  <polygon points="620,362 755,408 620,454 485,408" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+  <text x="620" y="403" text-anchor="middle" font-size="11.5" fill="#111827">Below threshold (30%)</text>
+  <text x="620" y="419" text-anchor="middle" font-size="11.5" fill="#111827">and low state latched?</text>
+  <line x1="620" y1="454" x2="620" y2="486" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="632" y="476" font-size="10" fill="#6B7280">yes</text>
+  <line x1="755" y1="408" x2="760" y2="408" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="748" y="400" font-size="10" fill="#6B7280">no</text>
+  <rect x="762" y="384" width="132" height="46" rx="8" fill="#F9FAFB" stroke="#9CA3AF" stroke-width="1.2"/>
+  <text x="828" y="403" text-anchor="middle" font-size="9.5" fill="#111827">Idle &#8212; latch clears</text>
+  <text x="828" y="417" text-anchor="middle" font-size="9.5" fill="#111827">only at &#8805; 35%</text>
+
+  <rect x="455" y="488" width="330" height="58" rx="8" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.4"/>
+  <text x="620" y="510" text-anchor="middle" font-size="11.5" font-weight="700" fill="#111827">Closed&#8209;loop watering policy (Figure 4)</text>
+  <text x="620" y="528" text-anchor="middle" font-size="10.5" fill="#374151">daily 30&#8209;min ceiling &#183; 15&#8209;min cooldown &#183; response</text>
+  <text x="620" y="540" text-anchor="middle" font-size="10.5" fill="#374151">check &#183; fault latch after 3 failed waterings</text>
+  <line x1="620" y1="546" x2="620" y2="568" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="455" y="570" width="330" height="58" rx="8" fill="#FFFFFF" stroke="#34D399" stroke-width="1.4"/>
+  <text x="620" y="592" text-anchor="middle" font-size="11.5" font-weight="700" fill="#111827">Fertigation (optional, volume&#8209;metered)</text>
+  <text x="620" y="610" text-anchor="middle" font-size="10.5" fill="#374151">fertilizer dose dispensed WITH watering from a</text>
+  <text x="620" y="622" text-anchor="middle" font-size="10.5" fill="#374151">declared tank stock; 7&#8209;day soak between doses</text>
+  <line x1="620" y1="628" x2="620" y2="650" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="455" y="652" width="330" height="40" rx="8" fill="#F9FAFB" stroke="#9CA3AF" stroke-width="1.2"/>
+  <text x="620" y="670" text-anchor="middle" font-size="11" fill="#111827">Log activation / block reason to database</text>
+  <text x="620" y="684" text-anchor="middle" font-size="10.5" fill="#374151">relay_activations &#183; blocked_activations &#183; tank_auto_doses</text>
+
+  <!-- ============ COLUMN C: PEST ============ -->
+  <text x="1020" y="240" text-anchor="middle" font-size="12.5" font-weight="700" fill="#9A3412">Rule 3 &#8212; AI Pest Detection &amp; Response</text>
+  <polygon points="1020,252 1140,292 1020,332 900,292" fill="#FFEDD5" stroke="#EA580C" stroke-width="1.5"/>
+  <text x="1020" y="288" text-anchor="middle" font-size="11.5" fill="#111827">Pest scan due?</text>
+  <text x="1020" y="304" text-anchor="middle" font-size="10.5" fill="#374151">(every 10 min)</text>
+  <line x1="1020" y1="332" x2="1020" y2="356" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="1032" y="348" font-size="10" fill="#6B7280">yes</text>
+
+  <rect x="906" y="358" width="228" height="52" rx="8" fill="#FFFFFF" stroke="#34D399" stroke-width="1.4"/>
+  <text x="1020" y="378" text-anchor="middle" font-size="11" font-weight="700" fill="#111827">Capture + AI classification</text>
+  <text x="1020" y="396" text-anchor="middle" font-size="9.5" fill="#374151">stepper sweeps camera across plants;</text>
+  <text x="1020" y="409" text-anchor="middle" font-size="9.5" fill="#374151">YOLOv11n classifies each captured frame</text>
+  <line x1="1020" y1="410" x2="1020" y2="432" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <polygon points="1020,434 1130,472 1020,510 910,472" fill="#FFEDD5" stroke="#EA580C" stroke-width="1.5"/>
+  <text x="1020" y="468" text-anchor="middle" font-size="11.5" fill="#111827">Best confidence</text>
+  <text x="1020" y="484" text-anchor="middle" font-size="11.5" fill="#111827">of the frame(s)?</text>
+
+  <line x1="910" y1="472" x2="890" y2="472" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="898" y="462" font-size="9.5" fill="#6B7280">0.45&#8211;0.70</text>
+  <rect x="760" y="440" width="128" height="44" rx="8" fill="#FEF3C7" stroke="#D97706" stroke-width="1.3"/>
+  <text x="824" y="458" text-anchor="middle" font-size="10" fill="#111827">&#8220;Possible pest&#8221;</text>
+  <text x="824" y="472" text-anchor="middle" font-size="9.5" fill="#374151">warning, no spray</text>
+
+  <line x1="1020" y1="510" x2="1020" y2="530" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="1032" y="524" font-size="9.5" fill="#6B7280">&#8805; 0.70</text>
+  <polygon points="1020,532 1120,566 1020,600 920,566" fill="#FFEDD5" stroke="#EA580C" stroke-width="1.5"/>
+  <text x="1020" y="570" text-anchor="middle" font-size="11" fill="#111827">This month&#8217;s sprays</text>
+  <text x="1020" y="585" text-anchor="middle" font-size="11" fill="#111827">below limit (2)?</text>
+  <line x1="1120" y1="566" x2="1167" y2="566" stroke="#374151" stroke-width="1.5"/>
+  <line x1="1167" y1="566" x2="1167" y2="618" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="1132" y="558" font-size="9.5" fill="#6B7280">no</text>
+  <rect x="1104" y="620" width="126" height="52" rx="8" fill="#FEE2E2" stroke="#DC2626" stroke-width="1.3"/>
+  <text x="1167" y="640" text-anchor="middle" font-size="10" font-weight="700" fill="#111827">Blocked:</text>
+  <text x="1167" y="654" text-anchor="middle" font-size="9.5" fill="#374151">monthly cap</text>
+  <text x="1167" y="666" text-anchor="middle" font-size="9" fill="#374151">logged + warned</text>
+
+  <line x1="1020" y1="600" x2="1020" y2="620" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="1032" y="614" font-size="9.5" fill="#6B7280">yes</text>
+  <rect x="900" y="622" width="192" height="50" rx="8" fill="#FFEDD5" stroke="#EA580C" stroke-width="1.4"/>
+  <text x="996" y="642" text-anchor="middle" font-size="10.5" font-weight="700" fill="#111827">Relay 3 ON (pest response)</text>
+  <text x="996" y="658" text-anchor="middle" font-size="9.5" fill="#374151">volume&#8209;metered pesticide dose</text>
+  <line x1="996" y1="672" x2="996" y2="692" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <rect x="870" y="694" width="300" height="54" rx="8" fill="#FFFFFF" stroke="#34D399" stroke-width="1.4"/>
+  <text x="1020" y="714" text-anchor="middle" font-size="11.5" font-weight="700" fill="#111827">IPM treatment guidance</text>
+  <text x="1020" y="732" text-anchor="middle" font-size="10.5" fill="#374151">cultural / organic / chemical options shown for</text>
+  <text x="1020" y="744" text-anchor="middle" font-size="10.5" fill="#374151">the detected pest &#183; log detection + image</text>
+
+  <!-- column bottoms into loop-back -->
+  <line x1="210" y1="692" x2="210" y2="752" stroke="#9CA3AF" stroke-width="1.3" stroke-dasharray="5 4"/>
+  <line x1="620" y1="692" x2="620" y2="752" stroke="#9CA3AF" stroke-width="1.3" stroke-dasharray="5 4"/>
+  <line x1="1020" y1="748" x2="1020" y2="752" stroke="#9CA3AF" stroke-width="1.3" stroke-dasharray="5 4"/>
+  <line x1="1020" y1="752" x2="30" y2="752" stroke="#9CA3AF" stroke-width="1.3" stroke-dasharray="5 4"/>
+  <circle cx="210" cy="752" r="2.5" fill="#9CA3AF"/>
+  <circle cx="620" cy="752" r="2.5" fill="#9CA3AF"/>
+
+  <!-- ============ SAFETY BAR ============ -->
+  <rect x="55" y="790" width="1130" height="70" rx="10" fill="#FEE2E2" stroke="#DC2626" stroke-width="1.6"/>
+  <text x="620" y="816" text-anchor="middle" font-size="12.5" font-weight="700" fill="#991B1B">Always&#8209;active safety layer</text>
+  <text x="620" y="836" text-anchor="middle" font-size="11" fill="#374151">Watchdog force&#8209;OFF after 180 s &#183; emergency&#8209;stop button (all relays OFF + automation paused) &#183; relays OFF at startup and shutdown</text>
+  <text x="620" y="852" text-anchor="middle" font-size="11" fill="#374151">A database or sensor failure is logged and skipped &#8212; it never crashes the control loop</text>
+
+  <!-- loop back to tick -->
+  <path d="M 30 752 L 30 145 L 268 145" fill="none" stroke="#6B7280" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#arr)"/>
+  <text x="140" y="136" font-size="10.5" fill="#6B7280">next tick &#183; loop continues until the service stops</text>
+
+  <text x="620" y="900" text-anchor="middle" font-size="10.5" fill="#6B7280">Alerts are edge&#8209;triggered (state transitions), not level&#8209;triggered, so the farmer is not spammed while conditions persist.</text>
+  <text x="620" y="920" text-anchor="middle" font-size="10.5" fill="#6B7280">Only the pest&#8209;response relay is rate&#8209;limited; nutrient alerts and soil&#8209;moisture watering are never capped by the monthly limit.</text>
+</svg>

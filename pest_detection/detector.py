@@ -33,8 +33,17 @@ class PestDetector(ABC):
     name: str = "base"
 
     @abstractmethod
-    def detect(self, image_path: str | None = None) -> DetectionResult:
-        """Analyze *image_path* (or a freshly captured frame when None)."""
+    def detect(
+        self,
+        image_path: str | None = None,
+        roi: str | list | None = None,
+    ) -> DetectionResult:
+        """Analyze *image_path* (or a freshly captured frame when None).
+
+        ``roi`` selects the scanned region: ``"full"``, ``"center"``,
+        ``"grid"``, or an explicit fractional ``[x, y, w, h]`` box. Ignored
+        by detectors that scan whole frames only.
+        """
 
     def status(self) -> dict[str, Any]:
         """Return metadata for the system-status dashboard section."""

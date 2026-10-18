@@ -72,6 +72,15 @@ class SystemState:
             "model": None,
             "error": None,
             "suggestion": None,
+            # Outcome of the LAST completed scan:
+            #   status: "detected" | "possible" | "clear" | "error"
+            #   reason: "ok" | "low_confidence" | "below_threshold"
+            #         | "capture_failed" | "model_unavailable"
+            #         | "exception" | "scan_busy"
+            #   frames: number of frames analyzed in the last completed scan
+            "status": None,
+            "reason": None,
+            "frames": 0,
         }
 
         # Camera state

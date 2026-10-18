@@ -4,12 +4,26 @@
   const API = '/api';
   const POLL_MS = 5000;
 
+  // Pump names in plain language, kept next to the engineering relay id.
+  const PUMP_NAMES = { 1: 'Plant food pump', 2: 'Watering pump', 3: 'Pest sprayer' };
+
   // DOM references
   const els = {
     uptime: document.getElementById('uptime'),
     modeBadge: document.getElementById('mode-badge'),
     alertsList: document.querySelector('.alerts-list'),
     clearAlerts: document.getElementById('clear-alerts'),
+    // At-a-glance chips
+    chipSoilValue: document.getElementById('chip-soil-value'),
+    chipSoilDot: document.querySelector('#chip-soil .chip-dot'),
+    chipWateringValue: document.getElementById('chip-watering-value'),
+    chipWateringDot: document.querySelector('#chip-watering .chip-dot'),
+    chipPestsValue: document.getElementById('chip-pests-value'),
+    chipPestsDot: document.querySelector('#chip-pests .chip-dot'),
+    chipCameraValue: document.getElementById('chip-camera-value'),
+    chipCameraDot: document.querySelector('#chip-camera .chip-dot'),
+    chipAlertsValue: document.getElementById('chip-alerts-value'),
+    chipAlertsDot: document.querySelector('#chip-alerts .chip-dot'),
     // Notification bell & panel
     notifBell: n('notif-bell'),
     notifBadge: n('notif-badge'),
@@ -20,6 +34,7 @@
     npk: { n: n('npk-n'), p: n('npk-p'), k: n('npk-k') },
     npkTh: { n: n('npk-th-n'), p: n('npk-th-p'), k: n('npk-th-k') },
     npkSt: { n: n('npk-st-n'), p: n('npk-st-p'), k: n('npk-st-k') },
+    npkState: { n: n('npk-state-n'), p: n('npk-state-p'), k: n('npk-state-k') },
     npkItems: { n: n('[data-nutrient="nitrogen"]'), p: n('[data-nutrient="phosphorus"]'), k: n('[data-nutrient="potassium"]') },
     btnR1: n('btn-relay1'),
     r1Dur: n('r1-dur'),
@@ -40,6 +55,7 @@
     moistThLine: n('moist-th-line'),
     moistThLabel: n('moist-th-label'),
     moistStatus: n('moist-status'),
+    moistState: n('moist-state'),
     moistMeta: n('moist-meta'),
     // Watering closed-loop (fault banner + daily budget + cooldown)
     wateringFault: n('watering-fault'),
@@ -99,11 +115,11 @@
   };
 
   function n(sel) {
-  // '#'/'.'/'[' prefix = CSS selector; anything else = element ID
-  return sel[0] === '#' || sel[0] === '.' || sel[0] === '['
-    ? document.querySelector(sel)
-    : document.getElementById(sel);
-}
+    // '#'/'.'/'[' prefix = CSS selector; anything else = element ID
+    return sel[0] === '#' || sel[0] === '.' || sel[0] === '['
+      ? document.querySelector(sel)
+      : document.getElementById(sel);
+  }
 
   // State
   let alertId = 0;
@@ -150,6 +166,26 @@
     return span;
   }
 
+  function stateSpan(text, kind) {
+    const span = document.createElement('span');
+    span.className = 'state ' + kind;
+    span.textContent = text;
+    return span;
+  }
+
+  // Chip dot classes by severity.
+  function chipDotKind(kind) {
+    return { good: 'dot-good', warn: 'dot-warn', bad: 'dot-bad', unknown: 'dot-unknown' }[kind] || 'dot-unknown';
+  }
+
+  function setChip(chipValue, chipDot, text, kind) {
+    if (chipValue) chipValue.textContent = text;
+    if (chipDot) {
+      chipDot.className = 'chip-dot ' + chipDotKind(kind);
+      chipDot.setAttribute('aria-label', text);
+    }
+  }
+
   // API
   async function fetchJson(url, options = {}) {
     const res = await fetch(url, { headers: { 'Accept': 'application/json' }, ...options });
@@ -182,8 +218,8 @@
   // Render
   function render(data) {
     // Header
-    els.uptime.textContent = `Uptime: ${uptimeStr(data.system.uptime_seconds)}`;
-    els.modeBadge.textContent = data.system.simulate_hardware ? 'SIMULATED' : 'LIVE';
+    els.uptime.textContent = `Running for ${uptimeStr(data.system.uptime_seconds)}`;
+    els.modeBadge.textContent = data.system.simulate_hardware ? 'Demo mode' : 'Live hardware';
     els.modeBadge.className = 'badge ' + (data.system.simulate_hardware ? 'badge-simulated' : 'badge-real');
 
     // NPK
@@ -199,21 +235,26 @@
       const valEl = els.npk[key];
       const thEl = els.npkTh[key];
       const stEl = els.npkSt[key];
+      const stateEl = els.npkState[key];
 
       if (val !== undefined && val !== null) {
         valEl.textContent = val.toFixed(2);
       } else {
         valEl.textContent = '—';
       }
-      thEl.textContent = threshold !== undefined ? `threshold: ${threshold} mg/kg` : 'threshold: —';
+      thEl.textContent = threshold !== undefined ? `Alert below: ${threshold} mg/kg` : 'Alert below: —';
       if (below) {
         item.classList.add('below');
-        stEl.textContent = 'BELOW';
+        stEl.textContent = 'LOW';
         stEl.className = 'status below';
+        stateEl.textContent = `${nut.charAt(0).toUpperCase() + nut.slice(1)} is low`;
+        stateEl.className = 'state state-warn';
       } else {
         item.classList.remove('below');
         stEl.textContent = 'OK';
         stEl.className = 'status normal';
+        stateEl.textContent = `${nut.charAt(0).toUpperCase() + nut.slice(1)} is fine`;
+        stateEl.className = 'state state-good';
       }
     });
 
@@ -233,20 +274,28 @@
       const pct = Math.max(0, Math.min(100, moist.value));
       els.moistBar.style.width = `${pct}%`;
       const th = data.thresholds?.moisture || 30;
-      els.moistThLabel.textContent = `Threshold: ${th}%`;
+      els.moistThLabel.textContent = `Water when below: ${th}%`;
       els.moistThLine.style.left = `${Math.max(0, Math.min(100, th))}%`;
       if (moist.below) {
-        els.moistStatus.textContent = 'BELOW THRESHOLD';
+        els.moistStatus.textContent = 'DRY';
         els.moistStatus.className = 'status below';
+        els.moistState.textContent = 'Soil is dry — plants need water';
+        els.moistState.className = 'state state-warn';
       } else {
-        els.moistStatus.textContent = 'Normal';
+        els.moistStatus.textContent = 'OK';
         els.moistStatus.className = 'status normal';
+        els.moistState.textContent = 'Soil moisture is fine';
+        els.moistState.className = 'state state-good';
       }
     } else {
       els.moistVal.textContent = '—';
       els.moistVal.className = 'value large';
       els.moistBar.style.width = '0%';
       els.moistThLine.style.left = '0%';
+      els.moistStatus.textContent = '—';
+      els.moistStatus.className = 'status';
+      els.moistState.textContent = 'No reading';
+      els.moistState.className = 'state state-unknown';
     }
 
     // Usage (pest response monthly limit)
@@ -255,15 +304,19 @@
     // Watering closed-loop (fault + daily budget + settle cooldown)
     renderWatering(data.watering);
 
-    els.moistMeta.textContent = `Last reading: ${fmtTime(moist.timestamp)} | Last watering: —`;
+    els.moistMeta.textContent = `Last reading: ${fmtTime(moist.timestamp)}`;
+
+    // At-a-glance strip
+    renderAtAGlance(data);
 
     // Tanks (fertilizer + pesticide)
     renderTanks(data.tanks);
     // Relays
     renderRelays(data.relays);
 
-    // Pest
-    renderPest(data.pest);
+    // Pest — pass the configured confidence threshold so the "possible"
+    // state can show the real confirmation cutoff.
+    renderPest(data.pest, data.thresholds?.pest ?? 0.70);
 
     // System
     renderSystem(data);
@@ -279,6 +332,68 @@
 
     // Notification bell (same alerts feed, separate read/dismissed state)
     renderNotifications(data.alerts);
+  }
+
+  function renderAtAGlance(data) {
+    const moist = data.sensors.moisture;
+    const moistVal = moist.value;
+    const moistBelow = moist.below;
+    if (moistVal !== null && moistVal !== undefined) {
+      if (moistBelow) {
+        setChip(els.chipSoilValue, els.chipSoilDot, 'Dry — needs water', 'bad');
+      } else {
+        setChip(els.chipSoilValue, els.chipSoilDot, 'Moisture is fine', 'good');
+      }
+    } else {
+      setChip(els.chipSoilValue, els.chipSoilDot, 'No reading', 'unknown');
+    }
+
+    // Watering chip: is any pump running / is watering active?
+    const relays = data.relays || [];
+    const wateringPump = relays.find(r => r.id === 2);
+    const anyOn = relays.some(r => r.state === 'on');
+    if (wateringPump && wateringPump.state === 'on') {
+      setChip(els.chipWateringValue, els.chipWateringDot, 'Watering now', 'warn');
+    } else if (anyOn) {
+      setChip(els.chipWateringValue, els.chipWateringDot, 'A pump is running', 'warn');
+    } else {
+      setChip(els.chipWateringValue, els.chipWateringDot, 'Pumps off', 'good');
+    }
+
+    // Pests chip
+    const pest = data.pest;
+    if (!pest.enabled || !pest.configured) {
+      setChip(els.chipPestsValue, els.chipPestsDot, 'Pest watch off', 'unknown');
+    } else if (pest.detected) {
+      setChip(els.chipPestsValue, els.chipPestsDot, `Pest found: ${pest.pest_class || 'unknown'}`, 'bad');
+    } else if (pest.status === 'possible') {
+      setChip(els.chipPestsValue, els.chipPestsDot, `Possible pest: ${pest.pest_class || 'unknown'}`, 'warn');
+    } else if (pest.status === 'error') {
+      setChip(els.chipPestsValue, els.chipPestsDot, 'Pest scan failed', 'bad');
+    } else {
+      setChip(els.chipPestsValue, els.chipPestsDot, 'No pests found', 'good');
+    }
+
+    // Camera chip
+    const cam = data.camera;
+    if (!cam.configured) {
+      setChip(els.chipCameraValue, els.chipCameraDot, 'Not connected', 'bad');
+    } else if (cam.error) {
+      setChip(els.chipCameraValue, els.chipCameraDot, 'Error', 'bad');
+    } else {
+      setChip(els.chipCameraValue, els.chipCameraDot, 'Working', 'good');
+    }
+
+    // Alerts chip
+    const alerts = Array.isArray(data.alerts) ? data.alerts : [];
+    const serious = alerts.some(a => a.level === 'error' || a.level === 'critical');
+    if (alerts.length === 0) {
+      setChip(els.chipAlertsValue, els.chipAlertsDot, 'None', 'good');
+    } else if (serious) {
+      setChip(els.chipAlertsValue, els.chipAlertsDot, `${alerts.length} need attention`, 'bad');
+    } else {
+      setChip(els.chipAlertsValue, els.chipAlertsDot, `${alerts.length} new`, 'warn');
+    }
   }
 
   function renderTanks(tanks) {
@@ -300,40 +415,53 @@
       return cd > 0 ? fmtLeft(cd / 1000) : 'Ready';
     };
 
+    const tankStatus = (t) => {
+      if (t.empty) return 'Empty';
+      if (t.low) return 'Low — refill soon';
+      if (t.blocked_reason) return 'Blocked';
+      return 'Ready';
+    };
+
     const fert = tanks.fertilizer || {};
-    document.getElementById('tank-fert-status').textContent = fert.status || '-';
+    const fertStatus = tankStatus(fert);
+    document.getElementById('tank-fert-status').textContent = fertStatus;
+    document.getElementById('tank-fert-status').className = 'state ' +
+      (fertStatus === 'Ready' ? 'state-good' : fertStatus === 'Empty' ? 'state-bad' : 'state-warn');
     document.getElementById('tank-fert-type').textContent = fert.fertilizer_type || '-';
     document.getElementById('tank-fert-npk').textContent =
       (fert.npk_n || 0) + '/' + (fert.npk_p || 0) + '/' + (fert.npk_k || 0);
     const fertRem = fert.ml_remaining_est || 0;
     document.getElementById('tank-fert-rem').textContent =
-      fertRem.toFixed(0) + ' mL / ' + (fert.total_ml || 0).toFixed(0) + ' mL';
+      fertRem.toFixed(0) + ' mL';
     document.getElementById('tank-fert-rt').textContent =
-      '~' + mlToSec(fertRem, fert.pump_lph).toFixed(1) + 's @ ' + (fert.pump_lph || 800) + ' L/H';
+      '~' + mlToSec(fertRem, fert.pump_lph).toFixed(1) + 's of run time left';
     document.getElementById('tank-fert-lastref').textContent = fmtDate(fert.last_refill_at);
     document.getElementById('tank-fert-lastfert').textContent = fmtDate(fert.last_fertilized_at);
     document.getElementById('tank-fert-cool').textContent = coolFmt(fert.cooldown_until_at);
-    document.getElementById('tank-fert-auto').textContent = fert.auto_enabled ? 'ON' : 'OFF';
-    document.getElementById('tank-fert-mode').textContent = fert.mode || '-';
+    document.getElementById('tank-fert-auto').textContent = fert.auto_enabled ? 'On' : 'Off';
+    document.getElementById('tank-fert-mode').textContent = fert.mode === 'separate' ? 'Separate from watering' : 'Mixes with watering';
     const fertDose = fert.fert_ml_per_cycle || 0;
     document.getElementById('tank-fert-dose').textContent =
-      fertDose.toFixed(0) + ' mL (~' + mlToSec(fertDose, fert.pump_lph).toFixed(2) + 's)';
+      fertDose.toFixed(0) + ' mL each use';
     const fertBlocked = document.getElementById('tank-fert-blocked');
     fertBlocked.textContent = fert.blocked_reason || '—';
     fertBlocked.classList.toggle('is-blocked', Boolean(fert.blocked_reason));
 
     const pest = tanks.pesticide || {};
-    document.getElementById('tank-pest-status').textContent = pest.status || '-';
+    const pestStatus = tankStatus(pest);
+    document.getElementById('tank-pest-status').textContent = pestStatus;
+    document.getElementById('tank-pest-status').className = 'state ' +
+      (pestStatus === 'Ready' ? 'state-good' : pestStatus === 'Empty' ? 'state-bad' : 'state-warn');
     document.getElementById('tank-pest-type').textContent = pest.pesticide_type || '-';
     const pestRem = pest.ml_remaining_est || 0;
     document.getElementById('tank-pest-rem').textContent =
-      pestRem.toFixed(0) + ' mL / ' + (pest.total_ml || 0).toFixed(0) + ' mL';
+      pestRem.toFixed(0) + ' mL';
     document.getElementById('tank-pest-rt').textContent =
-      '~' + mlToSec(pestRem, pest.pump_lph).toFixed(1) + 's @ ' + (pest.pump_lph || 800) + ' L/H';
+      '~' + mlToSec(pestRem, pest.pump_lph).toFixed(1) + 's of run time left';
     document.getElementById('tank-pest-lastref').textContent = fmtDate(pest.last_refill_at);
     document.getElementById('tank-pest-lastpest').textContent = fmtDate(pest.last_pesticided_at);
     document.getElementById('tank-pest-cool').textContent = coolFmt(pest.cooldown_until_at);
-    document.getElementById('tank-pest-auto').textContent = pest.auto_enabled ? 'ON' : 'OFF';
+    document.getElementById('tank-pest-auto').textContent = pest.auto_enabled ? 'On' : 'Off';
     document.getElementById('tank-pest-month').textContent = pest.max_activations_per_month || '-';
     const pestBlocked = document.getElementById('tank-pest-blocked');
     pestBlocked.textContent = pest.blocked_reason || '—';
@@ -348,16 +476,18 @@
       const dur = r.activated_at && r.duration
         ? Math.max(0, Math.floor(r.duration - (Date.now() / 1000 - new Date(r.activated_at).getTime() / 1000)))
         : 0;
+      const pumpName = PUMP_NAMES[r.id] || (r.label || r.name || `Relay ${r.id}`);
+      const isOn = r.state === 'on';
       card.innerHTML = `
         <div class="relay-header">
-          <span class="relay-name">${r.label || r.name} (Relay ${r.id})</span>
-          <span class="relay-pin">GPIO ${r.pin}</span>
+          <span class="relay-name">${pumpName}</span>
+          <span class="relay-pin">Relay ${r.id}</span>
         </div>
-        <span class="relay-state ${r.state}">${r.state.toUpperCase()}</span>
-        ${r.state === 'on' ? `<div class="relay-duration">Auto-off in ${fmtDuration(dur * 1000)}</div>` : ''}
+        <span class="relay-state ${r.state}">${isOn ? 'Running' : r.state === 'unavailable' ? 'Unavailable' : 'Off'}</span>
+        ${r.state === 'on' ? `<div class="relay-duration">Off in ${fmtDuration(dur * 1000)}</div>` : ''}
         <div class="relay-actions">
-          <button class="btn btn-primary ${r.state === 'on' || !r.available ? 'hidden' : ''}" data-on="${r.id}">ON</button>
-          <button class="btn btn-secondary ${r.state === 'off' ? 'hidden' : ''}" data-off="${r.id}">OFF</button>
+          <button class="btn btn-primary ${isOn || !r.available ? 'hidden' : ''}" data-on="${r.id}">Turn on</button>
+          <button class="btn btn-secondary ${!isOn ? 'hidden' : ''}" data-off="${r.id}">Turn off</button>
         </div>
       `;
       els.relayGrid.appendChild(card);
@@ -460,11 +590,14 @@
     }
   }
 
-  function renderPest(pest) {
-    if (!pest.enabled || !pest.configured) {
-      els.pestStatus.textContent = pest.enabled
-        ? 'Pest detection is not configured yet — no detector model is loaded.'
-        : 'Pest detection is turned off in Settings.';
+  function renderPest(pest, pestThreshold) {
+    const thresholdPct = pestThreshold != null ? Math.round(pestThreshold * 100) : 70;
+
+    if (!pest || !pest.enabled || !pest.configured) {
+      els.pestStatus.textContent = pest && pest.enabled
+        ? 'Pest watch is on, but no detector model is loaded.'
+        : 'Pest watch is turned off.';
+      els.pestStatus.className = 'pest-status';
       els.pestStatus.style.display = 'block';
       els.pestDetails.classList.add('hidden');
       els.pestScanActions.classList.add('hidden');
@@ -472,17 +605,71 @@
       renderPestTreatment(null);
       return;
     }
-    els.pestStatus.style.display = 'none';
+
+    els.pestStatus.style.display = 'block';
     els.pestDetails.classList.remove('hidden');
     els.pestScanActions.classList.remove('hidden');
     els.pestSimControls.style.display = 'flex';
-    els.pestDetails.innerHTML = `
-      <div class="pest-detail-row"><span class="label">Status</span><span class="value ${pest.detected ? 'detected' : 'not-detected'}">${pest.detected ? 'DETECTED' : 'None'}</span></div>
-      <div class="pest-detail-row"><span class="label">Class</span><span class="value">${pest.pest_class || '—'}</span></div>
-      <div class="pest-detail-row"><span class="label">Confidence</span><span class="value">${pest.confidence !== null ? (pest.confidence * 100).toFixed(1) + '%' : '—'}</span></div>
-      <div class="pest-detail-row"><span class="label">Model</span><span class="value">${pest.model || '—'}</span></div>
-      <div class="pest-detail-row"><span class="label">Last detection</span><span class="value">${fmtTime(pest.timestamp)}</span></div>
-    `;
+
+    const status = pest.status || (pest.detected ? 'detected' : 'clear');
+    const reason = pest.reason || 'ok';
+    const busy = reason === 'scan_busy';
+    const pestClass = pest.pest_class != null ? String(pest.pest_class) : null;
+    const confidence = pest.confidence != null ? pest.confidence : null;
+    const pct = confidence != null ? Math.round(confidence * 100) : null;
+    const frames = Number.isInteger(pest.frames) ? pest.frames : null;
+    const error = pest.error != null ? String(pest.error) : null;
+    const timestamp = pest.timestamp != null ? String(pest.timestamp) : null;
+
+    let outcome = '';
+    const rows = [];
+
+    if (status === 'detected') {
+      els.pestStatus.className = 'pest-status pest-outcome--detected';
+      outcome = `Pest detected — ${escapeHtml(pestClass || '—')} · ${pct != null ? pct + '%' : '—'} · ${fmtTime(timestamp)}`;
+      rows.push({ label: 'Pest type', value: pestClass || '—' });
+      if (pct != null) rows.push({ label: 'Surety', value: `${pct}%` });
+      if (frames && frames > 1) rows.push({ label: 'Frames', value: `best of ${frames}` });
+      rows.push({ label: 'Model', value: pest.model != null ? String(pest.model) : '—' });
+      rows.push({ label: 'Last check', value: fmtTime(timestamp) });
+    } else if (status === 'possible') {
+      els.pestStatus.className = 'pest-status pest-outcome--possible';
+      outcome = `Possible pest — ${escapeHtml(pestClass || '—')} · ${pct != null ? pct + '%' : '—'} — below ${thresholdPct}% confirmation, response not triggered`;
+      rows.push({ label: 'Pest type', value: pestClass || '—' });
+      if (pct != null) rows.push({ label: 'Surety', value: `${pct}%` });
+      if (frames && frames > 1) rows.push({ label: 'Frames', value: `best of ${frames}` });
+      rows.push({ label: 'Model', value: pest.model != null ? String(pest.model) : '—' });
+      rows.push({ label: 'Last check', value: fmtTime(timestamp) });
+    } else if (status === 'error') {
+      els.pestStatus.className = 'pest-status pest-outcome--error';
+      let msg;
+      if (reason === 'capture_failed') msg = 'Camera returned no frame.';
+      else if (reason === 'model_unavailable') msg = 'Pest model not loaded.';
+      else if (reason === 'exception') msg = error || 'Scan failed.';
+      else msg = 'Scan failed.';
+      outcome = escapeHtml(msg);
+      rows.push({ label: 'Model', value: pest.model != null ? String(pest.model) : '—' });
+      if (timestamp) rows.push({ label: 'Last check', value: fmtTime(timestamp) });
+    } else {
+      // clear
+      els.pestStatus.className = 'pest-status pest-outcome--clear';
+      const across = frames && frames > 1 ? ` across ${frames} frame(s)` : '';
+      outcome = `No pests found — best score ${pct != null ? pct + '%' : '—'}${across}`;
+      rows.push({ label: 'Pest type', value: '—' });
+      if (pct != null) rows.push({ label: 'Surety', value: `${pct}%` });
+      rows.push({ label: 'Model', value: pest.model != null ? String(pest.model) : '—' });
+      rows.push({ label: 'Last check', value: fmtTime(timestamp) });
+    }
+
+    let note = '';
+    if (busy) {
+      note = '<div class="pest-note pest-note--busy">A scan is already running — showing previous result.</div>';
+    }
+
+    els.pestStatus.innerHTML = outcome;
+    els.pestDetails.innerHTML = note +
+      rows.map(r => `<div class="pest-detail-row"><span class="label">${escapeHtml(r.label)}</span><span class="value">${escapeHtml(r.value)}</span></div>`).join('');
+
     renderPestTreatment(pest.suggestion || null);
   }
 
@@ -546,7 +733,7 @@
       els.wateringUsed.textContent = fmtMinsWhole(budget.used_seconds);
       els.wateringMax.textContent = fmtMinsWhole(budget.max_seconds);
       const rem = budget.remaining_seconds;
-      els.wateringRemaining.textContent = `Remaining: ${fmtMinsWhole(rem)}`;
+      els.wateringRemaining.textContent = `Remaining today: ${fmtMinsWhole(rem)}`;
       els.wateringRemaining.className = 'remaining' +
         (budget.blocked || rem <= 0 ? ' critical' : rem <= budget.max_seconds * 0.1 ? ' low' : '');
       els.wateringUsage.classList.remove('hidden');
@@ -557,7 +744,7 @@
     // 3. Settle window — muted one-liner, only while counting down.
     const cd = watering.cooldown_remaining_seconds;
     if (cd > 0) {
-      els.wateringCooldown.textContent = `Waiting before next watering: ${fmtMins(cd)}`;
+      els.wateringCooldown.textContent = `Waiting ${fmtMins(cd)} before the next watering`;
       els.wateringCooldown.classList.remove('hidden');
     } else {
       els.wateringCooldown.classList.add('hidden');
@@ -569,21 +756,24 @@
     // DB
     els.sysDb.innerHTML = '';
     els.sysDb.appendChild(statusDot(data.database.ok));
-    els.sysDb.append(data.database.ok ? ' Connected' : ` Error: ${data.database.error || 'unknown'}`);
+    els.sysDb.append(' ');
+    els.sysDb.appendChild(stateSpan(data.database.ok ? 'Connected' : `Error: ${data.database.error || 'unknown'}`, data.database.ok ? 'good' : 'bad'));
 
     // NPK sensor
     const npk = data.sensors.npk;
     const npkOk = !npk.error && npk.last_success;
     els.sysNpk.innerHTML = '';
     els.sysNpk.appendChild(statusDot(npkOk));
-    els.sysNpk.append(npkOk ? ' OK' : ` Error: ${npk.error || 'no reading'}`);
+    els.sysNpk.append(' ');
+    els.sysNpk.appendChild(stateSpan(npkOk ? 'OK' : `No reading: ${npk.error || 'unknown'}`, npkOk ? 'good' : 'bad'));
 
     // Moisture sensor
     const moist = data.sensors.moisture;
     const moistOk = !moist.error && moist.last_success;
     els.sysMoist.innerHTML = '';
     els.sysMoist.appendChild(statusDot(moistOk));
-    els.sysMoist.append(moistOk ? ' OK' : ` Error: ${moist.error || 'no reading'}`);
+    els.sysMoist.append(' ');
+    els.sysMoist.appendChild(stateSpan(moistOk ? 'OK' : `No reading: ${moist.error || 'unknown'}`, moistOk ? 'good' : 'bad'));
 
     // Camera
     els.sysCam.innerHTML = '';
@@ -591,15 +781,17 @@
     const camLink = document.createElement('a');
     camLink.href = '/camera';
     camLink.className = 'nav-tab-link';
-    camLink.textContent = 'View';
+    camLink.textContent = 'Open camera view';
     if (cam.configured) {
       els.sysCam.appendChild(statusDot(!cam.error));
-      els.sysCam.append(cam.error ? ` Error: ${cam.error}` : ' Connected');
+      els.sysCam.append(' ');
+      els.sysCam.appendChild(stateSpan(cam.error ? `Error: ${cam.error}` : 'Connected', !cam.error ? 'good' : 'bad'));
       els.sysCam.append(' ');
       els.sysCam.appendChild(camLink);
     } else {
       els.sysCam.appendChild(statusDot(false));
-      els.sysCam.append(cam.error ? ` Unavailable: ${cam.error}` : ' Not installed');
+      els.sysCam.append(' ');
+      els.sysCam.appendChild(stateSpan(cam.error ? `Not connected: ${cam.error}` : 'Camera not installed', 'bad'));
       els.sysCam.append(' ');
       els.sysCam.appendChild(camLink);
     }
@@ -609,10 +801,12 @@
     const pest = data.pest;
     if (pest.enabled && pest.configured) {
       els.sysPest.appendChild(statusDot(!pest.error));
-      els.sysPest.append(pest.error ? ` Error: ${pest.error}` : ` Loaded (${pest.model})`);
+      els.sysPest.append(' ');
+      els.sysPest.appendChild(stateSpan(pest.error ? `Error: ${pest.error}` : `Loaded (${pest.model})`, !pest.error ? 'good' : 'bad'));
     } else {
       els.sysPest.appendChild(statusDot(false));
-      els.sysPest.append(' Not configured');
+      els.sysPest.append(' ');
+      els.sysPest.appendChild(stateSpan('Not configured', 'unknown'));
     }
 
     // Automation
@@ -620,10 +814,12 @@
     const auto = data.automation;
     if (auto.running) {
       els.sysAuto.appendChild(statusDot(!auto.paused));
-      els.sysAuto.append(auto.paused ? ' Paused' : ' Running');
+      els.sysAuto.append(' ');
+      els.sysAuto.appendChild(stateSpan(auto.paused ? 'Paused' : 'Running', !auto.paused ? 'good' : 'warn'));
     } else {
       els.sysAuto.appendChild(statusDot(false));
-      els.sysAuto.append(' Stopped');
+      els.sysAuto.append(' ');
+      els.sysAuto.appendChild(stateSpan('Stopped', 'bad'));
     }
   }
 
@@ -686,8 +882,8 @@
           return `<span class="deficit-item ${v > 0 ? 'low' : 'high'}">${sign} ${label}: ${Math.abs(v).toFixed(1)}%</span>`;
         });
       els.recDeficits.innerHTML = deficitItems.length
-        ? `<strong>Deficits:</strong> ${deficitItems.join(' ')}`
-        : '<strong>Deficits:</strong> None';
+        ? `<strong>Low nutrients:</strong> ${deficitItems.join(' ')}`
+        : '<strong>Low nutrients:</strong> None';
     }
     // Duration
     if (els.recDur) {
@@ -696,7 +892,7 @@
     }
     // Meta
     if (els.recMeta) {
-      els.recMeta.textContent = `Generated: ${fmtTime(rec.timestamp)}`;
+      els.recMeta.textContent = `Suggested: ${fmtTime(rec.timestamp)}`;
     }
   }
 
@@ -1014,7 +1210,7 @@
       <td class="num">${fmtNum(r.moisture)}</td>
     </tr>`);
     els.logPanels.readings.innerHTML = logTable(
-      ['Time', 'N (mg/kg)', 'P (mg/kg)', 'K (mg/kg)', 'Moisture (%)'],
+      ['Time', 'Nitrogen (mg/kg)', 'Phosphorus (mg/kg)', 'Potassium (mg/kg)', 'Moisture (%)'],
       html, 'No readings recorded yet.',
     );
   }
@@ -1028,8 +1224,8 @@
       <td>${escapeHtml(r.source || '—')}</td>
     </tr>`);
     els.logPanels.activations.innerHTML = logTable(
-      ['Time', 'Relay', 'Trigger', 'Duration', 'Source'],
-      html, 'No relay activations logged yet.',
+      ['Time', 'Pump / sprayer', 'Trigger', 'Duration', 'Source'],
+      html, 'No pump or sprayer use logged yet.',
     );
   }
 
@@ -1049,14 +1245,14 @@
   function renderDetections(rows) {
     const html = rows.map(r => `<tr>
       <td class="time">${fmtTime(r.timestamp)}</td>
-      <td><span class="log-badge ${r.detected ? 'detected' : 'none'}">${r.detected ? 'Detected' : 'None'}</span></td>
+      <td><span class="log-badge ${r.detected ? 'detected' : 'none'}">${r.detected ? 'Pest found' : 'None'}</span></td>
       <td>${r.pest_class ? escapeHtml(r.pest_class) : '—'}</td>
       <td class="num">${r.confidence != null ? (r.confidence * 100).toFixed(0) + '%' : '—'}</td>
       <td>${r.model ? escapeHtml(r.model) : '—'}</td>
     </tr>`);
     els.logPanels.detections.innerHTML = logTable(
-      ['Time', 'Result', 'Pest', 'Confidence', 'Model'],
-      html, 'No pest detections logged yet.',
+      ['Time', 'Result', 'Pest type', 'Surety', 'Model'],
+      html, 'No pest checks logged yet.',
     );
   }
 
@@ -1278,7 +1474,7 @@
   }
 
   async function restartServer() {
-    if (!confirm('Restart the server now? This takes about 30 seconds. All pumps are switched off during the restart.')) return;
+    if (!confirm('Restart the server now? All pumps switch off for about 30 seconds.')) return;
     els.btnRestartServer.disabled = true;
     els.restartStatus.textContent = 'Restarting…';
     try {
@@ -1332,7 +1528,7 @@
   }
 
   async function emergencyStop() {
-    if (!confirm('Force ALL relays OFF? This is an emergency stop.')) return;
+    if (!confirm('Switch every pump off right now? This stops watering and spraying immediately.')) return;
     try {
       await postJson(`${API}/relays/all-off`);
     } catch (e) { addAlert('error', 'Dashboard', e.message); }
@@ -1368,7 +1564,7 @@
         pest_class: els.simPestClass.value,
         confidence: parseFloat(els.simConfidence.value),
       });
-      if (res.ok) addAlert('info', 'Dashboard', `Simulated ${res.pest_class} (${(res.confidence*100).toFixed(0)}%)`);
+      if (res.ok) addAlert('info', 'Dashboard', `Simulated ${res.pest_class} (${(res.confidence*100).toFixed(0)}% sure)`);
       else addAlert('error', 'Dashboard', res.message);
     } catch (e) { addAlert('error', 'Dashboard', e.message); }
   }
@@ -1379,7 +1575,7 @@
     try {
       const res = await postJson(`${API}/pest/scan`, { mode });
       addAlert(res.ok ? 'info' : 'error', 'Dashboard',
-        res.message || (res.ok ? 'Pest monitor started.' : 'Could not start the pest monitor.'));
+        res.message || (res.ok ? 'Pest check started.' : 'Could not start the pest check.'));
       if (res.ok) poll(); // refresh the pest card promptly
     } catch (e) {
       addAlert('error', 'Dashboard', e.message);
@@ -1404,9 +1600,9 @@
 
     // UI state
     btn.disabled = true;
-    btn.textContent = 'Running Test...';
+    btn.textContent = 'Running test...';
     resultsDiv.classList.remove('hidden');
-    resultsDiv.innerHTML = '<p class="test-running">Running system test... this may take up to 30 seconds.</p>';
+    resultsDiv.innerHTML = '<p class="test-running">Running test... this may take up to 30 seconds.</p>';
 
     try {
       const res = await postJson(`${API}/system/test`, options);
@@ -1415,7 +1611,7 @@
       resultsDiv.innerHTML = `<p class="test-error">Test failed: ${escapeHtml(e.message)}</p>`;
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Run System Test';
+      btn.textContent = 'Run test';
       refreshCollapsibleCards();
     }
   }
@@ -1424,7 +1620,7 @@
     if (!data) return '<p class="test-error">No results returned.</p>';
 
     let html = `<div class="test-summary ${data.ok ? 'success' : 'failure'}">
-      <strong>Overall: ${data.ok ? 'PASSED' : 'FAILED'}</strong>
+      <strong>Overall: ${data.ok ? 'All passed' : 'Some checks failed'}</strong>
       <span class="test-time">${data.timestamp || ''}</span>
     </div>`;
 
@@ -1436,7 +1632,7 @@
       for (const r of items) {
         if (!r) continue;
         const ok = r.ok === true;
-        const relayId = r.relay_id ? ` Relay ${r.relay_id}` : '';
+        const relayId = r.relay_id ? ` Pump ${r.relay_id}` : '';
         const msg = escapeHtml(r.message || 'No message');
         html += `<li class="${ok ? 'test-pass' : 'test-fail'}">
           <span class="test-icon">${ok ? '✓' : '✗'}</span>
@@ -1461,7 +1657,7 @@
     btn.disabled = true;
     btn.textContent = 'Testing...';
     resultDiv.classList.remove('hidden');
-    resultDiv.innerHTML = '<p class="test-running">Running stepper test...</p>';
+    resultDiv.innerHTML = '<p class="test-running">Testing camera arm...</p>';
 
     try {
       const res = await postJson(`${API}/stepper/test`, { steps, delay });
@@ -1474,7 +1670,7 @@
       resultDiv.innerHTML = `<p class="test-error">✗ ${escapeHtml(e.message)}</p>`;
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Test Stepper (Forward + Back)';
+      btn.textContent = 'Move camera arm out and back';
       refreshCollapsibleCards();
     }
   }
@@ -1509,7 +1705,7 @@
         body: JSON.stringify(body),
       });
       const j = await res.json().catch(() => ({ ok: false }));
-      alert(j.message || (j.ok ? 'Refilled' : 'Failed'));
+      alert(j.message || (j.ok ? 'Tank marked refilled' : 'Failed'));
     });
   }
   const btnPestRef = document.getElementById('btn-pest-refill');
@@ -1528,7 +1724,7 @@
         body: JSON.stringify(body),
       });
       const j = await res.json().catch(() => ({ ok: false }));
-      alert(j.message || (j.ok ? 'Refilled' : 'Failed'));
+      alert(j.message || (j.ok ? 'Tank marked refilled' : 'Failed'));
     });
   }
   document.getElementById('btn-fert-auto-on')?.addEventListener('click', () => tankAuto('fertilizer', true));

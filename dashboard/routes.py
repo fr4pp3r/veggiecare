@@ -260,6 +260,7 @@ def api_state():
     snapshot["thresholds"] = {
         "npk": thresholds,
         "moisture": moisture_threshold,
+        "pest": float(_config().get("pest_detection", {}).get("confidence_threshold", 0.70)),
     }
     # Relay item metadata (labels, durations).
     relay_items = {int(r["id"]): r for r in _config().get("relays", {}).get("items", [])}
@@ -810,6 +811,10 @@ def api_database_download():
     except Exception as exc:
         log.exception("Database download failed")
         return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@bp.route("/api/database/export")
+def api_database_export():
     """Export all database tables as JSON."""
     db = getattr(current_app, "veggiecare_db", None)
     if db is None:

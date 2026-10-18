@@ -188,6 +188,16 @@ pest_detection:
   model_path:
 
   confidence_threshold: 0.70
+  # Confidence band: >= confidence_threshold = confirmed (triggers relay);
+  # [low_confidence_threshold, confidence_threshold) = "possible pest" warning only.
+  low_confidence_threshold: 0.45
+  # Frames captured per manual "Check now" scan (best-of, early-stops on confirmed).
+  manual_scan_frames: 5
+  manual_scan_delay_seconds: 0.5
+  # Region scanning for classification: full | center | grid | [x, y, w, h] (fractions).
+  # grid = full frame first, 2x2 tiles only if full frame is below threshold.
+  roi: full
+  roi_grid: 2
   # Automated pest monitor: every capture_interval_seconds the stepper drives
   # the camera out and back (see `stepper` below) while the AI analyses frames.
   # 600 = every 10 minutes.

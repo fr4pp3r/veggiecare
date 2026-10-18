@@ -304,3 +304,153 @@ def test_soil_moisture_validates_without_new_closed_loop_keys(temp_config):
     with open(temp_config, "w") as f:
         yaml.safe_dump(data, f)
     load_config(temp_config)
+
+
+# ----------------------------------------------------------------------
+# pest_detection: confidence band + ROI scanning keys
+# ----------------------------------------------------------------------
+
+def _set_pest_key(temp_config, key, value):
+    import yaml
+    from config.config import default_config, deep_merge
+
+    with open(temp_config) as f:
+        data = yaml.safe_load(f)
+    # Merge the shipped defaults so the new keys exist when a test overrides one.
+    merged = deep_merge(default_config(), data)
+    merged.setdefault("pest_detection", {})[key] = value
+    with open(temp_config, "w") as f:
+        yaml.safe_dump(merged, f)
+
+
+def test_shipped_default_config_has_pest_scan_keys():
+    from config.config import default_config
+
+    pest = default_config()["pest_detection"]
+    assert pest["confidence_threshold"] == 0.70
+    assert pest["low_confidence_threshold"] == 0.45
+    assert pest["manual_scan_frames"] == 5
+    assert pest["manual_scan_delay_seconds"] == 0.5
+    assert pest["roi"] == "full"
+    assert pest["roi_grid"] == 2
+
+
+def test_shipped_default_config_is_valid():
+    from config.config import default_config, validate
+
+    validate(default_config())  # must not raise
+
+
+def test_pest_keys_optional_old_configs_still_load(temp_config):
+    # temp_config predates the new keys entirely; load_config deep-merges
+    # the shipped defaults over it, so the merged result must validate.
+    import yaml
+
+    with open(temp_config) as f:
+        data = yaml.safe_load(f)
+    from config.config import default_config, deep_merge
+    merged = deep_merge(default_config(), data)
+    with open(temp_config, "w") as f:
+        yaml.safe_dump(merged, f)
+    cfg = load_config(temp_config)
+    assert cfg["pest_detection"]["roi"] == "full"
+    assert cfg["pest_detection"]["roi_grid"] == 2
+
+
+def test_pest_scan_keys_accept_valid_values(temp_config):
+    _set_pest_key(temp_config, "low_confidence_threshold", 0.5)
+    _set_pest_key(temp_config, "manual_scan_frames", 20)
+    _set_pest_key(temp_config, "manual_scan_delay_seconds", 10)
+    _set_pest_key(temp_config, "roi", "grid")
+    _set_pest_key(temp_config, "roi_grid", 4)
+    cfg = load_config(temp_config)
+    assert cfg["pest_detection"]["low_confidence_threshold"] == 0.5
+    assert cfg["pest_detection"]["manual_scan_frames"] == 20
+    assert cfg["pest_detection"]["manual_scan_delay_seconds"] == 10
+    assert cfg["pest_detection"]["roi"] == "grid"
+    assert cfg["pest_detection"]["roi_grid"] == 4
+
+
+def test_pest_scan_full_frame_box_roi_is_valid(temp_config):
+    # Boundary: a box covering the whole frame is legal (0 <= x < 1, 0 < w <= 1, x+w <= 1).
+    _set_pest_key(temp_config, "roi", [0.0, 0.0, 1.0, 1.0])
+    cfg = load_config(temp_config)
+    assert cfg["pest_detection"]["roi"] == [0.0, 0.0, 1.0, 1.0]
+
+
+@pytest.mark.parametrize("value", [0.0, 1.0, 1.5, -0.1, "0.3", True])
+def test_pest_low_confidence_threshold_rejects_invalid(temp_config, value):
+    _set_pest_key(temp_config, "low_confidence_threshold", value)
+    with pytest.raises(ConfigError) as exc:
+        load_config(temp_config)
+    assert "low_confidence_threshold" in str(exc.value)
+
+
+def test_pest_low_confidence_threshold_must_be_below_high(temp_config):
+    _set_pest_key(temp_config, "low_confidence_threshold", 0.80)
+    _set_pest_key(temp_config, "confidence_threshold", 0.70)
+    with pytest.raises(ConfigError) as exc:
+        load_config(temp_config)
+    message = str(exc.value)
+    assert "low_confidence_threshold" in message and "confidence_threshold" in message
+
+
+def test_pest_equal_thresholds_rejected(temp_config):
+    _set_pest_key(temp_config, "low_confidence_threshold", 0.70)
+    with pytest.raises(ConfigError) as exc:
+        load_config(temp_config)
+    assert "low_confidence_threshold" in str(exc.value)
+
+
+@pytest.mark.parametrize("value", [0, 21, 100, 2.5, "5", True])
+def test_pest_manual_scan_frames_rejects_invalid(temp_config, value):
+    _set_pest_key(temp_config, "manual_scan_frames", value)
+    with pytest.raises(ConfigError) as exc:
+        load_config(temp_config)
+    assert "manual_scan_frames" in str(exc.value)
+
+
+@pytest.mark.parametrize("value", [-0.1, 10.1, 11, "0.5"])
+def test_pest_manual_scan_delay_rejects_invalid(temp_config, value):
+    _set_pest_key(temp_config, "manual_scan_delay_seconds", value)
+    with pytest.raises(ConfigError) as exc:
+        load_config(temp_config)
+    assert "manual_scan_delay_seconds" in str(exc.value)
+
+
+@pytest.mark.parametrize("value", ["banana", "Full", "", 123, [0.5, 0.5], [0.5, 0.5, "a", 1], [1.5, 0.0, 0.5, 0.5]])
+def test_pest_roi_rejects_invalid(temp_config, value):
+    _set_pest_key(temp_config, "roi", value)
+    with pytest.raises(ConfigError) as exc:
+        load_config(temp_config)
+    message = str(exc.value)
+    assert "pest_detection.roi" in message
+
+
+def test_pest_roi_rejects_box_exceeding_frame(temp_config):
+    _set_pest_key(temp_config, "roi", [0.5, 0.5, 0.8, 0.8])
+    with pytest.raises(ConfigError) as exc:
+        load_config(temp_config)
+    assert "exceeds the frame" in str(exc.value)
+
+
+def test_pest_roi_rejects_zero_size_box(temp_config):
+    _set_pest_key(temp_config, "roi", [0.0, 0.0, 0.0, 0.5])
+    with pytest.raises(ConfigError) as exc:
+        load_config(temp_config)
+    assert "width and height" in str(exc.value)
+
+
+def test_pest_roi_rejects_x_not_below_one(temp_config):
+    _set_pest_key(temp_config, "roi", [1.0, 0.0, 0.4, 0.5])
+    with pytest.raises(ConfigError) as exc:
+        load_config(temp_config)
+    assert "x and y" in str(exc.value)
+
+
+@pytest.mark.parametrize("value", [1, 0, 5, 2.0, "2", True])
+def test_pest_roi_grid_rejects_invalid(temp_config, value):
+    _set_pest_key(temp_config, "roi_grid", value)
+    with pytest.raises(ConfigError) as exc:
+        load_config(temp_config)
+    assert "roi_grid" in str(exc.value)

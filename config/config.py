@@ -113,6 +113,34 @@ def _validate_str_list(cfg: dict, key: str, errors: list[str], path: str) -> Non
             errors.append(f"{path}.{key}[{idx}]: must be a non-empty string")
 
 
+def _validate_roi(section: dict, errors: list[str], path: str) -> None:
+    """Validate ``pest_detection.roi``: 'full' | 'center' | 'grid' | [x, y, w, h]."""
+    roi = section.get("roi")
+    if isinstance(roi, str):
+        if roi not in ("full", "center", "grid"):
+            errors.append(
+                f"{path}.roi must be 'full', 'center', 'grid' or [x, y, w, h], got {roi!r}"
+            )
+        return
+    if isinstance(roi, list):
+        if len(roi) != 4 or not all(_is_number(v) for v in roi):
+            errors.append(f"{path}.roi: [x, y, w, h] must be four numbers")
+            return
+        x, y, w, h = (float(v) for v in roi)
+        if not (0 < w <= 1) or not (0 < h <= 1):
+            errors.append(f"{path}.roi: width and height must be in (0, 1], got {[w, h]}")
+        elif not (0 <= x < 1) or not (0 <= y < 1):
+            errors.append(f"{path}.roi: x and y must be in [0, 1), got {[x, y]}")
+        elif x + w > 1 + 1e-9 or y + h > 1 + 1e-9:
+            errors.append(
+                f"{path}.roi: box exceeds the frame (x+w={x + w:g}, y+h={y + h:g} must be <= 1)"
+            )
+        return
+    errors.append(
+        f"{path}.roi must be 'full', 'center', 'grid' or [x, y, w, h], got {type(roi).__name__}"
+    )
+
+
 # ----------------------------------------------------------------------
 # Validation
 # ----------------------------------------------------------------------
@@ -223,6 +251,26 @@ def _validate_pest(section: dict, errors: list[str], relay_ids: set[int]) -> Non
         if relay_id not in relay_ids:
             errors.append(f"{path}.relay_id: relay {relay_id} not defined in relays.items")
     _number(section, "confidence_threshold", errors, path, minimum=0, maximum=1)
+    # Confidence band + region scanning (optional; absent in older configs).
+    if "low_confidence_threshold" in section:
+        low = section.get("low_confidence_threshold")
+        if not _is_number(low) or not (0 < float(low) < 1):
+            errors.append(f"{path}.low_confidence_threshold must be a number in (0, 1), got {low!r}")
+        else:
+            high = section.get("confidence_threshold")
+            if _is_number(high) and float(low) >= float(high):
+                errors.append(
+                    f"{path}.low_confidence_threshold ({low:g}) must be less than "
+                    f"confidence_threshold ({high:g})"
+                )
+    if "manual_scan_frames" in section:
+        _int(section, "manual_scan_frames", errors, path, minimum=1, maximum=20)
+    if "manual_scan_delay_seconds" in section:
+        _number(section, "manual_scan_delay_seconds", errors, path, minimum=0, maximum=10)
+    if "roi" in section and section["roi"] is not None:
+        _validate_roi(section, errors, path)
+    if "roi_grid" in section:
+        _int(section, "roi_grid", errors, path, minimum=2, maximum=4)
     _number(section, "capture_interval_seconds", errors, path, minimum=1)
     # Automated-sweep analysis cadence (optional; absent in older configs).
     if "analysis_interval_seconds" in section:

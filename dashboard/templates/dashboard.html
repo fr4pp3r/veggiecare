@@ -101,6 +101,34 @@
 
   <main class="container">
     <div id="view-overview">
+      <!-- At-a-glance summary strip: answers "is anything wrong?" in 3 seconds -->
+      <section id="at-a-glance" class="card">
+        <div class="card-body">
+          <div class="status-strip">
+            <div class="status-chip" id="chip-soil">
+              <span class="chip-dot dot-unknown" aria-hidden="true"></span>
+              <span><span class="chip-label">Soil</span><span class="chip-value" id="chip-soil-value">—</span></span>
+            </div>
+            <div class="status-chip" id="chip-watering">
+              <span class="chip-dot dot-unknown" aria-hidden="true"></span>
+              <span><span class="chip-label">Watering</span><span class="chip-value" id="chip-watering-value">—</span></span>
+            </div>
+            <div class="status-chip" id="chip-pests">
+              <span class="chip-dot dot-unknown" aria-hidden="true"></span>
+              <span><span class="chip-label">Pests</span><span class="chip-value" id="chip-pests-value">—</span></span>
+            </div>
+            <div class="status-chip" id="chip-camera">
+              <span class="chip-dot dot-unknown" aria-hidden="true"></span>
+              <span><span class="chip-label">Camera</span><span class="chip-value" id="chip-camera-value">—</span></span>
+            </div>
+            <div class="status-chip" id="chip-alerts">
+              <span class="chip-dot dot-unknown" aria-hidden="true"></span>
+              <span><span class="chip-label">Alerts</span><span class="chip-value" id="chip-alerts-value">—</span></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section id="alerts" class="card alerts-card" aria-live="polite">
         <header class="card-header">
           <h2>Alerts</h2>
@@ -120,12 +148,12 @@
                 <span class="watering-fault-tag">Watering stopped</span>
               </div>
               <p class="watering-fault-reason" id="watering-fault-reason"></p>
-              <button id="btn-watering-reset" class="btn btn-secondary btn-sm watering-fault-reset" type="button">Reset</button>
+              <button id="btn-watering-reset" class="btn btn-secondary btn-sm watering-fault-reset" type="button">Restart watering</button>
             </div>
             <div class="sensor-main">
-              <span class="label">Moisture</span>
-              <span class="value large" id="moist-val">—</span>
-              <span class="unit">%</span>
+              <span class="label">Soil moisture</span>
+              <span class="value large" id="moist-val">—</span><span class="unit">%</span>
+              <span class="state" id="moist-state">—</span>
             </div>
             <div class="threshold-bar">
               <div class="bar-bg">
@@ -133,154 +161,193 @@
                 <div class="bar-threshold" id="moist-th-line"></div>
               </div>
               <div class="threshold-labels">
-                <span id="moist-th-label">Threshold: —%</span>
+                <span id="moist-th-label">Water when below: —%</span>
                 <span id="moist-status" class="status"></span>
               </div>
             </div>
             <div class="usage-info watering-usage hidden" id="watering-usage">
-              <span>Daily watering budget: <strong id="watering-used">—</strong> / <strong id="watering-max">—</strong></span>
-              <span id="watering-remaining" class="remaining">Remaining: —</span>
+              <span>Water used today: <strong id="watering-used">—</strong> / <strong id="watering-max">—</strong> min</span>
+              <span id="watering-remaining" class="remaining">Remaining today: —</span>
             </div>
             <p class="meta watering-cooldown hidden" id="watering-cooldown"></p>
-            <p class="meta" id="moist-meta">Last reading: — | Last watering: —</p>
+            <p class="meta" id="moist-meta">Last reading: —</p>
           </div>
         </section>
 
         <section id="npk" class="card collapsible">
-          <header class="card-header"><h2>NPK Sensor</h2></header>
+          <header class="card-header"><h2>Soil Nutrients</h2></header>
           <div class="card-body">
             <div class="sensor-grid">
               <div class="sensor-item" data-nutrient="nitrogen">
-                <span class="label">Nitrogen (N)</span>
-                <span class="value" id="npk-n">—</span>
-                <span class="unit">mg/kg</span>
-                <span class="threshold" id="npk-th-n">threshold: —</span>
+                <span class="label">Nitrogen</span>
+                <span class="value" id="npk-n">—</span><span class="unit">mg/kg</span>
+                <span class="threshold" id="npk-th-n">Alert below: —</span>
                 <span class="status" id="npk-st-n"></span>
+                <span class="state" id="npk-state-n">—</span>
               </div>
               <div class="sensor-item" data-nutrient="phosphorus">
-                <span class="label">Phosphorus (P)</span>
-                <span class="value" id="npk-p">—</span>
-                <span class="unit">mg/kg</span>
-                <span class="threshold" id="npk-th-p">threshold: —</span>
+                <span class="label">Phosphorus</span>
+                <span class="value" id="npk-p">—</span><span class="unit">mg/kg</span>
+                <span class="threshold" id="npk-th-p">Alert below: —</span>
                 <span class="status" id="npk-st-p"></span>
+                <span class="state" id="npk-state-p">—</span>
               </div>
               <div class="sensor-item" data-nutrient="potassium">
-                <span class="label">Potassium (K)</span>
-                <span class="value" id="npk-k">—</span>
-                <span class="unit">mg/kg</span>
-                <span class="threshold" id="npk-th-k">threshold: —</span>
+                <span class="label">Potassium</span>
+                <span class="value" id="npk-k">—</span><span class="unit">mg/kg</span>
+                <span class="threshold" id="npk-th-k">Alert below: —</span>
                 <span class="status" id="npk-st-k"></span>
+                <span class="state" id="npk-state-k">—</span>
               </div>
             </div>
             <div class="card-actions">
-              <button id="btn-relay1" class="btn btn-primary" disabled>Activate Fertilizer (Relay 1)</button>
-              <span class="hint">Manual only — activates for <span id="r1-dur">—</span>s</span>
+              <button id="btn-relay1" class="btn btn-primary" disabled>Add plant food now</button>
+              <span class="hint">Runs the plant food pump for <span id="r1-dur">—</span> seconds</span>
             </div>
             <p class="meta" id="npk-meta">Last reading: —</p>
           </div>
         </section>
 
         <section id="relays" class="card collapsible">
-          <header class="card-header"><h2>Relays</h2></header>
+          <header class="card-header"><h2>Pumps &amp; Sprayer</h2></header>
           <div class="card-body">
             <div class="relay-grid" id="relay-grid"></div>
             <div class="card-actions">
-              <button id="btn-emergency" class="btn btn-danger">EMERGENCY STOP — All Relays OFF</button>
+              <button id="btn-emergency" class="btn btn-stop" type="button">Stop everything</button>
+              <span class="hint">Switches every pump off right now.</span>
             </div>
           </div>
         </section>
 
         <section id="pest" class="card collapsible">
-          <header class="card-header"><h2>Pest Detection</h2></header>
+          <header class="card-header"><h2>Pest Watch</h2></header>
           <div class="card-body">
-            <div id="pest-status" class="pest-status">Not configured / Camera not installed</div>
+            <div id="pest-status" class="pest-status">Pest watch is turned off.</div>
             <div id="pest-details" class="pest-details hidden"></div>
             <div id="pest-treatment" class="pest-treatment hidden" aria-live="polite"></div>
             <div class="usage-info">
-              <span>Monthly pest responses: <strong id="pest-used">—</strong> / <strong id="pest-max">—</strong></span>
+              <span>Spray responses this month: <strong id="pest-used">—</strong> / <strong id="pest-max">—</strong></span>
               <span id="pest-remaining" class="remaining">Remaining: —</span>
             </div>
             <div class="card-actions hidden" id="pest-scan-actions">
-              <button id="btn-scan-stepper" class="btn btn-secondary">Force Pest monitor with stepper</button>
-              <button id="btn-scan-camera" class="btn btn-secondary">Force Pest monitor camera only</button>
+              <button id="btn-scan-camera" class="btn btn-secondary">Check for pests now</button>
+              <button id="btn-scan-stepper" class="btn btn-secondary">Check for pests now (move camera)</button>
             </div>
-            <div class="card-actions" id="pest-sim-controls" style="display:none;">
-              <label>Pest class: <select id="sim-pest-class">
-                <option value="aphid">Aphid</option>
-                <option value="caterpillar">Caterpillar</option>
-                <option value="fungus">Fungus</option>
-              </select></label>
-              <label>Confidence: <input type="range" id="sim-confidence" min="0.5" max="1" step="0.01" value="0.85"><span id="sim-conf-val">0.85</span></label>
-              <button id="btn-sim-pest" class="btn btn-secondary">Simulate Detection</button>
+            <div class="card-actions advanced" id="pest-sim-controls" style="display:none;">
+              <summary>Test mode (simulated detection only)</summary>
+              <div style="margin-top: 0.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: flex-end;">
+                <label style="font-size:0.8rem; color:var(--fg-muted);">Pest: 
+                  <select id="sim-pest-class" style="margin-left:0.25rem;">
+                    <option value="aphid">Aphid</option>
+                    <option value="caterpillar">Caterpillar</option>
+                    <option value="fungus">Fungus</option>
+                  </select>
+                </label>
+                <label style="font-size:0.8rem; color:var(--fg-muted);">Surety: 
+                  <input type="range" id="sim-confidence" min="0.5" max="1" step="0.01" value="0.85"><span id="sim-conf-val">0.85</span>
+                </label>
+                <button id="btn-sim-pest" class="btn btn-secondary" type="button">Simulate detection</button>
+              </div>
+              <p class="meta" style="font-size:0.75rem; color:var(--fg-muted); margin-top:0.5rem;">Simulated detections do not trigger the sprayer. For testing only.</p>
             </div>
           </div>
         </section>
 
         <section id="tanks" class="card collapsible">
-          <header class="card-header"><h2>Tanks (Fertilizer &amp; Pesticide)</h2></header>
+          <header class="card-header"><h2>Tanks</h2></header>
           <div class="card-body">
             <div class="tank-grid">
+              <!-- Fertilizer tank -->
               <div class="tank-card" data-tank="fertilizer">
-                <h3>Fertilizer Tank</h3>
-                <div class="tank-row"><span>Status:</span> <span id="tank-fert-status">—</span></div>
-                <div class="tank-row"><span>Type:</span> <span id="tank-fert-type">—</span></div>
-                <div class="tank-row"><span>NPK:</span> <span id="tank-fert-npk">—</span></div>
-                <div class="tank-row"><span>Remaining:</span> <span id="tank-fert-rem">—</span></div>
-                <div class="tank-row"><span>Runtime left:</span> <span id="tank-fert-rt">—</span></div>
-                <div class="tank-row"><span>Last refill:</span> <span id="tank-fert-lastref">—</span></div>
-                <div class="tank-row"><span>Last fertilized:</span> <span id="tank-fert-lastfert">—</span></div>
-                <div class="tank-row"><span>Cooldown:</span> <span id="tank-fert-cool">—</span></div>
-                <div class="tank-row"><span>Auto:</span> <span id="tank-fert-auto">—</span></div>
-                <div class="tank-row"><span>Mode:</span> <span id="tank-fert-mode">—</span></div>
-                <div class="tank-row"><span>Dose:</span> <span id="tank-fert-dose">—</span></div>
-                <div class="tank-row"><span>Blocked:</span> <span id="tank-fert-blocked" class="tank-blocked">—</span></div>
-                <div class="tank-form">
-                  <details>
-                    <summary>Mark refilled</summary>
-                    <div class="form-row"><label>Type</label><input id="fert-type" type="text" placeholder="NPK 10-10-10"></div>
-                    <div class="form-row"><label>N</label><input id="fert-n" type="number" step="0.1" value="0"></div>
-                    <div class="form-row"><label>P</label><input id="fert-p" type="number" step="0.1" value="0"></div>
-                    <div class="form-row"><label>K</label><input id="fert-k" type="number" step="0.1" value="0"></div>
-                    <div class="form-row"><label>Total mL</label><input id="fert-total" type="number" step="1" value="5000"></div>
-                    <div class="form-row"><label>Tank capacity mL</label><input id="fert-cap" type="number" step="1" value="5000"></div>
-                    <div class="form-row"><label>mL per cycle</label><input id="fert-mlcycle" type="number" step="10" value="250"></div>
-                    <div class="form-row"><label>Soak days</label><input id="fert-soak" type="number" step="1" value="7"></div>
-                    <div class="form-row"><label>Mode</label><select id="fert-mode"><option value="with_watering" selected>with_watering</option><option value="separate">separate</option></select></div>
-                    <button id="btn-fert-refill" class="btn btn-secondary btn-sm" type="button">Mark Fertilizer Refreshed</button>
-                  </details>
+                <h3>Plant food tank</h3>
+                <div class="tank-summary">
+                  <div class="tank-key-fact">
+                    <span class="label">Amount left</span>
+                    <span class="value tank-big" id="tank-fert-rem">—</span><span class="unit" style="font-size:1rem; color:var(--fg-muted);"> mL</span>
+                  </div>
+                  <div class="tank-key-fact">
+                    <span class="label">Status</span>
+                    <span class="value state" id="tank-fert-status">—</span>
+                  </div>
+                  <div class="tank-key-fact">
+                    <span class="label">Automatic</span>
+                    <span class="value" id="tank-fert-auto">—</span>
+                  </div>
                 </div>
-                <div class="card-actions">
-                  <button id="btn-fert-auto-on" class="btn btn-secondary btn-sm" type="button">Enable Auto</button>
-                  <button id="btn-fert-auto-off" class="btn btn-secondary btn-sm" type="button">Disable Auto</button>
+                <div class="advanced">
+                  <summary>Tank details</summary>
+                  <div class="tank-row" style="margin-top:0.5rem;"><span>Type:</span> <span id="tank-fert-type">—</span></div>
+                  <div class="tank-row"><span>Nutrients (N/P/K):</span> <span id="tank-fert-npk">—</span></div>
+                  <div class="tank-row"><span>How long it can keep running:</span> <span id="tank-fert-rt">—</span></div>
+                  <div class="tank-row"><span>Last filled:</span> <span id="tank-fert-lastref">—</span></div>
+                  <div class="tank-row"><span>Last used:</span> <span id="tank-fert-lastfert">—</span></div>
+                  <div class="tank-row"><span>Waiting until:</span> <span id="tank-fert-cool">—</span></div>
+                  <div class="tank-row"><span>Mix mode:</span> <span id="tank-fert-mode">—</span></div>
+                  <div class="tank-row"><span>Amount each use:</span> <span id="tank-fert-dose">—</span></div>
+                  <div class="tank-row"><span>Blocked:</span> <span id="tank-fert-blocked" class="tank-blocked">—</span></div>
+                  <div class="tank-form">
+                    <details>
+                      <summary>Mark tank refilled</summary>
+                      <div class="form-row"><label>Type</label><input id="fert-type" type="text" placeholder="NPK 10-10-10"></div>
+                      <div class="form-row"><label>N</label><input id="fert-n" type="number" step="0.1" value="0"></div>
+                      <div class="form-row"><label>P</label><input id="fert-p" type="number" step="0.1" value="0"></div>
+                      <div class="form-row"><label>K</label><input id="fert-k" type="number" step="0.1" value="0"></div>
+                      <div class="form-row"><label>Total mL</label><input id="fert-total" type="number" step="1" value="5000"></div>
+                      <div class="form-row"><label>Tank capacity mL</label><input id="fert-cap" type="number" step="1" value="5000"></div>
+                      <div class="form-row"><label>Amount each use</label><input id="fert-mlcycle" type="number" step="10" value="250"></div>
+                      <div class="form-row"><label>Days to wait between uses</label><input id="fert-soak" type="number" step="1" value="7"></div>
+                      <div class="form-row"><label>Mode</label><select id="fert-mode"><option value="with_watering">Mixes with watering</option><option value="separate">Separate from watering</option></select></div>
+                      <button id="btn-fert-refill" class="btn btn-secondary btn-sm" type="button">Mark refilled</button>
+                    </details>
+                  </div>
+                  <div class="card-actions">
+                    <button id="btn-fert-auto-on" class="btn btn-secondary btn-sm" type="button">Turn automatic on</button>
+                    <button id="btn-fert-auto-off" class="btn btn-secondary btn-sm" type="button">Turn automatic off</button>
+                  </div>
                 </div>
               </div>
 
+              <!-- Pesticide tank -->
               <div class="tank-card" data-tank="pesticide">
-                <h3>Pesticide Tank</h3>
-                <div class="tank-row"><span>Status:</span> <span id="tank-pest-status">—</span></div>
-                <div class="tank-row"><span>Type:</span> <span id="tank-pest-type">—</span></div>
-                <div class="tank-row"><span>Remaining:</span> <span id="tank-pest-rem">—</span></div>
-                <div class="tank-row"><span>Runtime left:</span> <span id="tank-pest-rt">—</span></div>
-                <div class="tank-row"><span>Last refill:</span> <span id="tank-pest-lastref">—</span></div>
-                <div class="tank-row"><span>Last pesticided:</span> <span id="tank-pest-lastpest">—</span></div>
-                <div class="tank-row"><span>Cooldown:</span> <span id="tank-pest-cool">—</span></div>
-                <div class="tank-row"><span>Auto:</span> <span id="tank-pest-auto">—</span></div>
-                <div class="tank-row"><span>Monthly:</span> <span id="tank-pest-month">—</span></div>
-                <div class="tank-row"><span>Blocked:</span> <span id="tank-pest-blocked" class="tank-blocked">—</span></div>
-                <div class="tank-form">
-                  <details>
-                    <summary>Mark refilled</summary>
-                    <div class="form-row"><label>Type</label><input id="pest-type" type="text" placeholder="Neem"></div>
-                    <div class="form-row"><label>Total mL</label><input id="pest-total" type="number" step="1" value="2000"></div>
-                    <div class="form-row"><label>Tank capacity mL</label><input id="pest-cap" type="number" step="1" value="2000"></div>
-                    <div class="form-row"><label>mL/activation</label><input id="pest-mlact" type="number" step="1" value="250"></div>
-                    <div class="form-row"><label>Soak days</label><input id="pest-soak" type="number" step="1" value="0"></div>
-                    <button id="btn-pest-refill" class="btn btn-secondary btn-sm" type="button">Mark Pesticide Refreshed</button>
-                  </details>
+                <h3>Pest spray tank</h3>
+                <div class="tank-summary">
+                  <div class="tank-key-fact">
+                    <span class="label">Amount left</span>
+                    <span class="value tank-big" id="tank-pest-rem">—</span><span class="unit" style="font-size:1rem; color:var(--fg-muted);"> mL</span>
+                  </div>
+                  <div class="tank-key-fact">
+                    <span class="label">Status</span>
+                    <span class="value state" id="tank-pest-status">—</span>
+                  </div>
+                  <div class="tank-key-fact">
+                    <span class="label">Automatic</span>
+                    <span class="value" id="tank-pest-auto">—</span>
+                  </div>
                 </div>
-                <div class="card-actions">
-                  <button id="btn-pest-auto-on" class="btn btn-secondary btn-sm" type="button">Enable Auto</button>
-                  <button id="btn-pest-auto-off" class="btn btn-secondary btn-sm" type="button">Disable Auto</button>
+                <div class="advanced">
+                  <summary>Tank details</summary>
+                  <div class="tank-row" style="margin-top:0.5rem;"><span>Type:</span> <span id="tank-pest-type">—</span></div>
+                  <div class="tank-row"><span>How long it can keep running:</span> <span id="tank-pest-rt">—</span></div>
+                  <div class="tank-row"><span>Last filled:</span> <span id="tank-pest-lastref">—</span></div>
+                  <div class="tank-row"><span>Last used:</span> <span id="tank-pest-lastpest">—</span></div>
+                  <div class="tank-row"><span>Waiting until:</span> <span id="tank-pest-cool">—</span></div>
+                  <div class="tank-row"><span>Spray responses this month:</span> <span id="tank-pest-month">—</span></div>
+                  <div class="tank-row"><span>Blocked:</span> <span id="tank-pest-blocked" class="tank-blocked">—</span></div>
+                  <div class="tank-form">
+                    <details>
+                      <summary>Mark tank refilled</summary>
+                      <div class="form-row"><label>Type</label><input id="pest-type" type="text" placeholder="Neem"></div>
+                      <div class="form-row"><label>Total mL</label><input id="pest-total" type="number" step="1" value="2000"></div>
+                      <div class="form-row"><label>Tank capacity mL</label><input id="pest-cap" type="number" step="1" value="2000"></div>
+                      <div class="form-row"><label>Amount each use</label><input id="pest-mlact" type="number" step="1" value="250"></div>
+                      <div class="form-row"><label>Days to wait between uses</label><input id="pest-soak" type="number" step="1" value="0"></div>
+                      <button id="btn-pest-refill" class="btn btn-secondary btn-sm" type="button">Mark refilled</button>
+                    </details>
+                  </div>
+                  <div class="card-actions">
+                    <button id="btn-pest-auto-on" class="btn btn-secondary btn-sm" type="button">Turn automatic on</button>
+                    <button id="btn-pest-auto-off" class="btn btn-secondary btn-sm" type="button">Turn automatic off</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -288,10 +355,10 @@
         </section>
 
         <section id="recommendation" class="card collapsible">
-          <header class="card-header"><h2>Fertilizer Recommendation</h2></header>
+          <header class="card-header"><h2>Plant Food Suggestion</h2></header>
           <div class="card-body">
             <div id="rec-status" class="rec-status">
-              <div class="rec-empty">No recommendation at this time. All nutrients are within target ranges.</div>
+              <div class="rec-empty">Your plants are getting the nutrients they need. No suggestion right now.</div>
               <div class="rec-active hidden">
                 <div class="rec-header">
                   <span class="rec-priority" id="rec-priority"></span>
@@ -299,15 +366,15 @@
                 </div>
                 <div class="rec-main">
                   <h3 id="rec-fertilizer-name">—</h3>
-                  <p class="rec-dosage">Dosage: <strong id="rec-dosage">—</strong> g per 10L water</p>
+                  <p class="rec-dosage">Amount: <strong id="rec-dosage">—</strong> g per 10 L water</p>
                   <p class="rec-reasoning" id="rec-reasoning">—</p>
                 </div>
                 <div class="rec-deficits" id="rec-deficits"></div>
                 <div class="card-actions">
-                  <button id="btn-apply-fertilizer" class="btn btn-success" type="button">Apply Fertilizer (Relay 1)</button>
-                  <span class="hint">Activates Relay 1 (fertilizer) for <span id="rec-dur">—</span>s</span>
+                  <button id="btn-apply-fertilizer" class="btn btn-success" type="button">Add plant food now</button>
+                  <span class="hint">Runs the plant food pump for <span id="rec-dur">—</span> seconds</span>
                 </div>
-                <p class="meta" id="rec-meta">Generated: —</p>
+                <p class="meta" id="rec-meta">Suggested: —</p>
               </div>
             </div>
           </div>
@@ -317,45 +384,47 @@
           <header class="card-header"><h2>System Status</h2></header>
           <div class="card-body">
             <dl class="sys-grid">
-              <dt>Uptime</dt><dd id="sys-uptime">—</dd>
-              <dt>Database</dt><dd id="sys-db"><span class="status"></span></dd>
-              <dt>NPK Sensor</dt><dd id="sys-npk"><span class="status"></span></dd>
-              <dt>Moisture Sensor</dt><dd id="sys-moist"><span class="status"></span></dd>
-              <dt>Camera</dt><dd id="sys-cam"><span class="status"></span></dd>
-              <dt>Pest Model</dt><dd id="sys-pest"><span class="status"></span></dd>
-              <dt>Automation</dt><dd id="sys-auto"><span class="status"></span></dd>
+              <dt>Database</dt><dd id="sys-db"><span class="status"></span> <span class="state">—</span></dd>
+              <dt>Nutrient sensor</dt><dd id="sys-npk"><span class="status"></span> <span class="state">—</span></dd>
+              <dt>Moisture sensor</dt><dd id="sys-moist"><span class="status"></span> <span class="state">—</span></dd>
+              <dt>Camera</dt><dd id="sys-cam"><span class="status"></span> <span class="state">—</span></dd>
+              <dt>Pest model</dt><dd id="sys-pest"><span class="status"></span> <span class="state">—</span></dd>
+              <dt>Automatic control</dt><dd id="sys-auto"><span class="status"></span> <span class="state">—</span></dd>
             </dl>
             <div class="card-actions">
-              <button id="btn-pause" class="btn btn-secondary">Pause Automation</button>
-              <button id="btn-resume" class="btn btn-primary hidden">Resume Automation</button>
+              <button id="btn-pause" class="btn btn-secondary">Pause automatic control</button>
+              <button id="btn-resume" class="btn btn-primary hidden">Resume automatic control</button>
             </div>
           </div>
         </section>
 
         <section id="system-test" class="card collapsible">
-          <header class="card-header"><h2>System Test</h2></header>
+          <header class="card-header"><h2>Test Everything</h2></header>
           <div class="card-body">
-            <p class="hint">Run a full diagnostic test of all hardware modules. This will briefly activate each relay, read sensors, capture a camera frame, and move the stepper motor.</p>
+            <p class="hint">Runs a quick check of the pumps, sensors, camera, and camera arm. Each pump turns on briefly and then off.</p>
             <div class="test-options">
-              <label><input type="checkbox" id="test-relays" checked> Relays</label>
-              <label><input type="checkbox" id="test-sensors" checked> Sensors (NPK, Moisture)</label>
+              <label><input type="checkbox" id="test-relays" checked> Pumps &amp; sprayer</label>
+              <label><input type="checkbox" id="test-sensors" checked> Sensors (nutrients, moisture)</label>
               <label><input type="checkbox" id="test-camera" checked> Camera</label>
-              <label><input type="checkbox" id="test-stepper" checked> Stepper</label>
+              <label><input type="checkbox" id="test-stepper" checked> Camera arm</label>
             </div>
             <div class="card-actions">
-              <button id="btn-system-test" class="btn btn-primary" type="button">Run System Test</button>
+              <button id="btn-system-test" class="btn btn-primary" type="button">Run test</button>
             </div>
 
-            <h3 style="margin: 1rem 1rem 0.5rem; font-size: 0.875rem;">Quick Stepper Test</h3>
-            <div class="stepper-test-controls" style="padding: 0 1rem 1rem;">
-              <div class="test-options" style="margin-bottom: 0.5rem;">
-                <label>Steps: <input type="number" id="stepper-steps" value="512" min="1" max="2048" step="64" style="width: 80px; margin-left: 0.5rem;"></label>
-                <label>Delay (s): <input type="number" id="stepper-delay" value="0.003" min="0.001" max="0.01" step="0.001" style="width: 80px; margin-left: 0.5rem;"></label>
+            <div class="advanced">
+              <summary>Quick camera-arm test</summary>
+              <div class="stepper-test-controls" style="padding: 0.5rem 1rem 1rem;">
+                <div class="test-options" style="margin-bottom: 0.5rem;">
+                  <label>Steps: <input type="number" id="stepper-steps" value="512" min="1" max="2048" step="64" style="width: 80px; margin-left: 0.5rem;"></label>
+                  <label>Delay (s): <input type="number" id="stepper-delay" value="0.003" min="0.001" max="0.01" step="0.001" style="width: 80px; margin-left: 0.5rem;"></label>
+                </div>
+                <div class="card-actions">
+                  <button id="btn-stepper-test" class="btn btn-secondary" type="button">Move camera arm out and back</button>
+                </div>
+                <div id="stepper-test-result" class="test-result hidden" role="region" aria-live="polite" style="margin-top: 0.5rem;"></div>
+                <p class="meta" style="font-size:0.75rem; color:var(--fg-muted); margin-top:0.5rem;">Moves the camera arm out and back so you can confirm it works.</p>
               </div>
-              <div class="card-actions">
-                <button id="btn-stepper-test" class="btn btn-secondary" type="button">Test Stepper (Forward + Back)</button>
-              </div>
-              <div id="stepper-test-result" class="test-result hidden" role="region" aria-live="polite" style="margin-top: 0.5rem;"></div>
             </div>
 
             <div id="system-test-results" class="test-results hidden" role="region" aria-live="polite"></div>
@@ -367,9 +436,9 @@
     <div id="view-logs" class="hidden">
       <section id="logs" class="card collapsible">
         <header class="card-header">
-          <h2>Sensor Logs</h2>
+          <h2>History</h2>
           <div class="logs-toolbar">
-            <label class="limit-label">Rows
+            <label class="limit-label">Show rows
               <select id="logs-limit">
                 <option value="25">25</option>
                 <option value="50" selected>50</option>
@@ -383,9 +452,9 @@
         <div class="card-body">
           <div class="sub-tabs" role="tablist">
             <button class="sub-tab active" data-log="readings" type="button">Readings</button>
-            <button class="sub-tab" data-log="activations" type="button">Activations</button>
-            <button class="sub-tab" data-log="events" type="button">Events</button>
-            <button class="sub-tab" data-log="detections" type="button">Detections</button>
+            <button class="sub-tab" data-log="activations" type="button">Pump &amp; sprayer use</button>
+            <button class="sub-tab" data-log="events" type="button">System events</button>
+            <button class="sub-tab" data-log="detections" type="button">Pest checks</button>
           </div>
           <div class="log-panel" id="log-readings" role="region"></div>
           <div class="log-panel hidden" id="log-activations" role="region"></div>
@@ -400,7 +469,7 @@
       <div id="settings-groups"></div>
       <section class="card settings-page save-bar">
         <div class="card-actions">
-          <button id="btn-save-settings" class="btn btn-primary hidden" type="button">Save Settings</button>
+          <button id="btn-save-settings" class="btn btn-primary hidden" type="button">Save changes</button>
           <span id="settings-save-note" class="hint">Changes apply after a restart.</span>
         </div>
       </section>
@@ -408,10 +477,13 @@
         <header class="card-header">
           <h2>Restart Server</h2>
         </header>
-        <p class="restart-desc">Restart the service to apply saved settings. All pumps are switched off during the restart (about 30 seconds).</p>
+        <div class="consequence">
+          <div class="consequence-title">What happens when you restart</div>
+          <p>All pumps switch off for about 30 seconds while the service restarts. No watering or spraying happens during that time.</p>
+        </div>
         <div class="card-actions">
-          <button id="btn-restart-server" class="btn btn-secondary" type="button" disabled>Restart Server</button>
-          <span id="restart-status" class="hint">Restart available when running as a systemd service.</span>
+          <button id="btn-restart-server" class="btn btn-secondary" type="button" disabled>Restart server</button>
+          <span id="restart-status" class="hint">Restart is only available when running as a systemd service.</span>
         </div>
       </section>
     </div>

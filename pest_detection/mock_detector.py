@@ -50,7 +50,13 @@ class MockDetector(PestDetector):
         # pest classes for random mode (built-in, not user-configured)
         self._pest_classes = DEFAULT_PEST_CLASSES
 
-    def detect(self, image_path: str | None = None) -> DetectionResult:
+    def detect(
+        self,
+        image_path: str | None = None,
+        roi: str | list | None = None,
+    ) -> DetectionResult:
+        # ``roi`` is accepted for interface compatibility; the mock does not
+        # scan regions.
         if self._mode == "none":
             return self._make_result(detected=False, pest_class=None, confidence=None)
 

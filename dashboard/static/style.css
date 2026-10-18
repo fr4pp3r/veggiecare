@@ -289,6 +289,17 @@ a:hover { color: var(--accent-hover); }
 .pest-detail-row .value.detected { color: var(--warning); }
 .pest-detail-row .value.not-detected { color: var(--success); }
 
+/* Outcome line — one prominent verdict per scan, colour carries the meaning */
+.pest-outcome { font-weight: 600; }
+.pest-outcome--detected { color: var(--danger); }
+.pest-outcome--possible { color: var(--warning); }
+.pest-outcome--clear { color: var(--fg); }
+.pest-outcome--error { color: var(--danger); }
+
+/* Subtle inline note (e.g. a scan is busy — showing the previous result) */
+.pest-note { font-size: 0.8125rem; color: var(--fg-muted); margin-top: 0.375rem; }
+.pest-note--busy { color: var(--warning); }
+
 /* Pest Treatment Panel (IPM guidance: cultural → organic → chemical last resort) */
 .pest-treatment {
   margin: 0 1rem 0.5rem;
@@ -824,10 +835,15 @@ a:hover { color: var(--accent-hover); }
 .pagination-current { padding: 0.375rem 0.75rem; background: var(--accent); color: #0d1117; border-radius: 6px; font-size: 0.8125rem; font-weight: 600; }
 @media (max-width: 768px) {
   .table-item { padding: 0.75rem; flex-direction: column; align-items: flex-start; gap: 0.5rem; }
-  .table-view-btn { width: 100%; }
+  .table-item .table-view-btn { width: 100%; min-height: 44px; }
   .table-viewer-toolbar { flex-direction: column; align-items: stretch; }
   .table-viewer-toolbar .settings-select { width: 100%; }
+  /* iOS zooms into <select> taps below 16px; keep the page-size control readable */
+  #table-page-size { font-size: 1rem; }
+  /* Readable table text on small screens (avoids iOS zoom) */
+  #table-viewer .log-table { font-size: 1rem; }
   .table-pagination { flex-direction: column; align-items: stretch; }
+  .table-pagination button { min-height: 44px; }
   .pagination-controls { justify-content: center; }
 }
 
@@ -1107,6 +1123,7 @@ a:hover { color: var(--accent-hover); }
   .table-item { padding: 0.75rem; }
 
   /* Priority ordering on mobile */
+  #at-a-glance { order: -11; }
   #alerts { order: -10; }
   #moisture { order: -9; }
   #npk { order: -8; }
@@ -1322,7 +1339,7 @@ a:hover { color: var(--accent-hover); }
 
 @media (max-width: 768px) {
   .log-cards { display: flex; }
-  .log-table-wrap { display: none; }
+  #view-logs .log-table-wrap { display: none; }
 }
 
 /* ------------------------------------------------------------------
@@ -1533,6 +1550,107 @@ a:hover { color: var(--accent-hover); }
 @media (prefers-reduced-motion: reduce) {
   .notif-panel:not(.hidden) { animation: none; }
 }
+
+/* ------------------------------------------------------------------
+   At-a-glance status strip (first 3 seconds: is anything wrong?)
+   ------------------------------------------------------------------ */
+.status-strip {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0 1rem 1rem;
+}
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 0.875rem;
+  flex: 1 1 150px;
+  min-width: 150px;
+}
+.status-chip .chip-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  box-shadow: 0 0 6px currentColor;
+}
+.status-chip .dot-good { background: var(--success); }
+.status-chip .dot-warn { background: var(--warning); }
+.status-chip .dot-bad { background: var(--danger); }
+.status-chip .dot-unknown { background: var(--fg-muted); }
+.status-chip .chip-label {
+  color: var(--fg-muted); font-size: 0.7rem; text-transform: uppercase;
+  letter-spacing: 0.05em; display: block;
+}
+.status-chip .chip-value { color: var(--fg); font-weight: 600; }
+
+/* Plain-language state text — words carry the meaning, color reinforces */
+.state-good { color: var(--success); font-weight: 600; }
+.state-warn { color: var(--warning); font-weight: 600; }
+.state-bad { color: var(--danger); font-weight: 600; }
+.state-unknown { color: var(--fg-muted); }
+
+/* Value + verdict pairs */
+.value-verdict { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; }
+.value-verdict .value { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.value-verdict .verdict { font-size: 0.875rem; }
+
+/* Tank summary — important facts read instantly, rest folds away */
+.tank-summary { padding: 1rem; }
+.tank-big { font-size: 2rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tank-key-fact { display: flex; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+.tank-key-fact:last-child { border-bottom: none; }
+.tank-key-fact .label { color: var(--fg-muted); font-size: 0.875rem; }
+.tank-key-fact .value { font-weight: 600; color: var(--fg); }
+
+/* Emergency stop — unmistakable but single action, not a wall of noise */
+.btn-stop {
+  background: var(--danger);
+  color: white;
+  font-size: 1rem;
+  padding: 0.75rem 1.25rem;
+  min-height: 48px;
+}
+.btn-stop:hover:not(:disabled) { background: #ff6b65; box-shadow: 0 0 16px rgba(248,81,73,0.5); }
+
+/* Advanced disclosure — engineering detail hidden by default */
+.advanced {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+.advanced summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--fg-muted);
+  font-weight: 600;
+}
+.advanced summary::marker { color: var(--fg-muted); }
+
+/* Consequence callout — destructive actions feel safe */
+.consequence {
+  margin: 0.5rem 0;
+  padding: 0.625rem 0.875rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(248,81,73,0.08);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+.consequence p { margin: 0; color: var(--fg); }
+.consequence .consequence-title { font-weight: 600; color: var(--danger); margin-bottom: 0.25rem; }
+
+/* Live indicator for polling values */
+.live-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--success);
+  box-shadow: 0 0 8px var(--success); animation: pulse 2s infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@media (prefers-reduced-motion: reduce) { .live-dot { animation: none; opacity: 1; } }
 
 /* ------------------------------------------------------------------
    Print styles

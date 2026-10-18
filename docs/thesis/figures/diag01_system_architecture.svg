@@ -1,0 +1,138 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2480" height="1720" viewBox="0 0 1240 860" font-family="Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#374151"/>
+    </marker>
+  </defs>
+  <rect width="1240" height="860" fill="#FFFFFF"/>
+
+  <text x="620" y="34" text-anchor="middle" font-size="21" font-weight="700" fill="#111827">VeggieCare System Architecture</text>
+  <text x="620" y="56" text-anchor="middle" font-size="12.5" fill="#6B7280">Raspberry Pi 5&#8209;based AI&#8209;integrated vegetable garden monitoring and management system</text>
+
+  <!-- ================= INPUT / SENSING LAYER ================= -->
+  <text x="155" y="92" text-anchor="middle" font-size="13" font-weight="700" fill="#1E40AF">Sensing / Input Layer</text>
+
+  <g>
+    <rect x="30" y="104" width="250" height="66" rx="8" fill="#DBEAFE" stroke="#2563EB" stroke-width="1.5"/>
+    <text x="155" y="128" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">NPK Soil Sensor</text>
+    <text x="155" y="146" text-anchor="middle" font-size="10.5" fill="#374151">JXCT JXBS&#8209;3001 &#183; RS485 / Modbus RTU</text>
+    <text x="155" y="160" text-anchor="middle" font-size="10.5" fill="#374151">via USB (FTDI) &#183; N, P, K in mg/kg</text>
+  </g>
+  <g>
+    <rect x="30" y="188" width="250" height="66" rx="8" fill="#DBEAFE" stroke="#2563EB" stroke-width="1.5"/>
+    <text x="155" y="212" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">Soil Moisture Probe</text>
+    <text x="155" y="230" text-anchor="middle" font-size="10.5" fill="#374151">Capacitive sensor &#183; MCP3008 ADC</text>
+    <text x="155" y="244" text-anchor="middle" font-size="10.5" fill="#374151">over SPI &#183; calibrated 0&#8211;100%</text>
+  </g>
+  <g>
+    <rect x="30" y="272" width="250" height="66" rx="8" fill="#DBEAFE" stroke="#2563EB" stroke-width="1.5"/>
+    <text x="155" y="296" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">USB Webcam</text>
+    <text x="155" y="314" text-anchor="middle" font-size="10.5" fill="#374151">V4L2 device &#183; auto&#8209;probe &#183; 640&#215;480</text>
+    <text x="155" y="328" text-anchor="middle" font-size="10.5" fill="#374151">JPEG capture + MJPEG live view</text>
+  </g>
+  <g>
+    <rect x="30" y="356" width="250" height="66" rx="8" fill="#DBEAFE" stroke="#2563EB" stroke-width="1.5"/>
+    <text x="155" y="380" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">Stepper Motor Assembly</text>
+    <text x="155" y="398" text-anchor="middle" font-size="10.5" fill="#374151">28BYJ&#8209;48 + ULN2003 driver</text>
+    <text x="155" y="412" text-anchor="middle" font-size="10.5" fill="#374151">sweeps camera across plants</text>
+  </g>
+
+  <!-- input arrows -->
+  <line x1="280" y1="137" x2="336" y2="180" stroke="#374151" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="280" y1="221" x2="336" y2="250" stroke="#374151" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="280" y1="305" x2="336" y2="320" stroke="#374151" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="280" y1="389" x2="336" y2="390" stroke="#374151" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+  <!-- ================= RASPBERRY PI CONTAINER ================= -->
+  <rect x="340" y="96" width="560" height="520" rx="12" fill="#F0FDF4" stroke="#059669" stroke-width="2"/>
+  <text x="620" y="122" text-anchor="middle" font-size="14" font-weight="700" fill="#065F46">Raspberry Pi 5 &#8212; VeggieCare Application (Python)</text>
+
+  <g>
+    <rect x="362" y="140" width="248" height="78" rx="8" fill="#FFFFFF" stroke="#34D399" stroke-width="1.4"/>
+    <text x="486" y="164" text-anchor="middle" font-size="12.5" font-weight="700" fill="#111827">Sensor Drivers</text>
+    <text x="486" y="182" text-anchor="middle" font-size="10.5" fill="#374151">minimalmodbus (NPK/RS485)</text>
+    <text x="486" y="196" text-anchor="middle" font-size="10.5" fill="#374151">spidev (MCP3008) &#183; OpenCV (camera)</text>
+  </g>
+  <g>
+    <rect x="362" y="240" width="248" height="78" rx="8" fill="#FFFFFF" stroke="#34D399" stroke-width="1.4"/>
+    <text x="486" y="264" text-anchor="middle" font-size="12.5" font-weight="700" fill="#111827">Automation Controller</text>
+    <text x="486" y="282" text-anchor="middle" font-size="10.5" fill="#374151">background loop &#183; threshold rules</text>
+    <text x="486" y="296" text-anchor="middle" font-size="10.5" fill="#374151">closed&#8209;loop watering policy</text>
+  </g>
+  <g>
+    <rect x="362" y="340" width="248" height="78" rx="8" fill="#FFFFFF" stroke="#34D399" stroke-width="1.4"/>
+    <text x="486" y="364" text-anchor="middle" font-size="12.5" font-weight="700" fill="#111827">Relay Driver (gpiozero)</text>
+    <text x="486" y="382" text-anchor="middle" font-size="10.5" fill="#374151">3 channels &#183; watchdog auto&#8209;OFF</text>
+    <text x="486" y="396" text-anchor="middle" font-size="10.5" fill="#374151">safe OFF on start / shutdown</text>
+  </g>
+  <g>
+    <rect x="630" y="140" width="248" height="78" rx="8" fill="#FEF3C7" stroke="#D97706" stroke-width="1.4"/>
+    <text x="754" y="164" text-anchor="middle" font-size="12.5" font-weight="700" fill="#111827">YOLOv11n Nano Detector (AI)</text>
+    <text x="754" y="182" text-anchor="middle" font-size="10.5" fill="#374151">9 pest classes &#183; CPU inference</text>
+    <text x="754" y="196" text-anchor="middle" font-size="10.5" fill="#374151">trained weights (best.pt) &#183; IPM guidance</text>
+  </g>
+  <g>
+    <rect x="630" y="240" width="248" height="78" rx="8" fill="#FFFFFF" stroke="#34D399" stroke-width="1.4"/>
+    <text x="754" y="264" text-anchor="middle" font-size="12.5" font-weight="700" fill="#111827">SQLite Database (WAL mode)</text>
+    <text x="754" y="282" text-anchor="middle" font-size="10.5" fill="#374151">readings &#183; relay activations</text>
+    <text x="754" y="296" text-anchor="middle" font-size="10.5" fill="#374151">pest detections &#183; system events</text>
+  </g>
+  <g>
+    <rect x="630" y="340" width="248" height="78" rx="8" fill="#FFFFFF" stroke="#34D399" stroke-width="1.4"/>
+    <text x="754" y="364" text-anchor="middle" font-size="12.5" font-weight="700" fill="#111827">Flask + Waitress Web Server</text>
+    <text x="754" y="382" text-anchor="middle" font-size="10.5" fill="#374151">REST API &#183; live dashboard</text>
+    <text x="754" y="396" text-anchor="middle" font-size="10.5" fill="#374151">port 5000 &#183; no page refresh needed</text>
+  </g>
+  <g>
+    <rect x="362" y="442" width="516" height="52" rx="8" fill="#FFFFFF" stroke="#34D399" stroke-width="1.4"/>
+    <text x="620" y="464" text-anchor="middle" font-size="12.5" font-weight="700" fill="#111827">Configuration (config.yaml, validated on load)</text>
+    <text x="620" y="482" text-anchor="middle" font-size="10.5" fill="#374151">thresholds, intervals, relay timings, pest and fertigation settings &#183; editable from the dashboard</text>
+  </g>
+
+  <!-- internal sensor-driver arrows -->
+  <line x1="486" y1="218" x2="486" y2="238" stroke="#6B7280" stroke-width="1.3" marker-end="url(#arrow)"/>
+  <line x1="486" y1="318" x2="486" y2="338" stroke="#6B7280" stroke-width="1.3" marker-end="url(#arrow)"/>
+  <line x1="754" y1="218" x2="754" y2="238" stroke="#6B7280" stroke-width="1.3" marker-end="url(#arrow)"/>
+  <line x1="754" y1="318" x2="754" y2="338" stroke="#6B7280" stroke-width="1.3" marker-end="url(#arrow)"/>
+
+
+  <!-- ================= ACTUATION / OUTPUT LAYER ================= -->
+  <text x="1085" y="92" text-anchor="middle" font-size="13" font-weight="700" fill="#9A3412">Actuation / Output Layer</text>
+
+  <g>
+    <rect x="960" y="120" width="250" height="66" rx="8" fill="#FFEDD5" stroke="#EA580C" stroke-width="1.5"/>
+    <text x="1085" y="144" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">Relay 1 &#8212; Fertilizer / NPK</text>
+    <text x="1085" y="162" text-anchor="middle" font-size="10.5" fill="#374151">GPIO 17 &#183; fertigation pump/valve</text>
+    <text x="1085" y="176" text-anchor="middle" font-size="10.5" fill="#374151">manual or tank&#8209;metered dosing</text>
+  </g>
+  <g>
+    <rect x="960" y="220" width="250" height="66" rx="8" fill="#FFEDD5" stroke="#EA580C" stroke-width="1.5"/>
+    <text x="1085" y="244" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">Relay 2 &#8212; Water Pump</text>
+    <text x="1085" y="262" text-anchor="middle" font-size="10.5" fill="#374151">GPIO 27 &#183; automatic irrigation</text>
+    <text x="1085" y="276" text-anchor="middle" font-size="10.5" fill="#374151">closed&#8209;loop, 30 min/day ceiling</text>
+  </g>
+  <g>
+    <rect x="960" y="320" width="250" height="66" rx="8" fill="#FFEDD5" stroke="#EA580C" stroke-width="1.5"/>
+    <text x="1085" y="344" text-anchor="middle" font-size="13" font-weight="700" fill="#111827">Relay 3 &#8212; Pest Response</text>
+    <text x="1085" y="362" text-anchor="middle" font-size="10.5" fill="#374151">GPIO 22 &#183; sprayer on AI detection</text>
+    <text x="1085" y="376" text-anchor="middle" font-size="10.5" fill="#374151">capped at 2 activations/month</text>
+  </g>
+
+  <line x1="900" y1="175" x2="956" y2="153" stroke="#374151" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="900" y1="250" x2="956" y2="253" stroke="#374151" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="900" y1="325" x2="956" y2="353" stroke="#374151" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+  <!-- ================= ACCESS LAYER ================= -->
+  <g>
+    <rect x="340" y="700" width="560" height="76" rx="12" fill="#EDE9FE" stroke="#7C3AED" stroke-width="2"/>
+    <text x="620" y="730" text-anchor="middle" font-size="13.5" font-weight="700" fill="#111827">Farmer&#8217;s Browser / Smartphone &#8212; Access Layer (Wi&#8209;Fi hotspot or LAN)</text>
+    <text x="620" y="750" text-anchor="middle" font-size="10.5" fill="#374151">live sensor readings &#183; manual relay control &#183; pest alerts + treatment guidance &#183; settings &#183; emergency stop</text>
+  </g>
+  <line x1="560" y1="700" x2="560" y2="620" stroke="#374151" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="680" y1="620" x2="680" y2="700" stroke="#374151" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <text x="700" y="660" font-size="10" fill="#6B7280">sensor data + alerts &#8592;</text>
+  <text x="455" y="660" font-size="10" fill="#6B7280">commands &#8594;</text>
+
+  <text x="620" y="820" text-anchor="middle" font-size="10.5" fill="#6B7280">Every hardware interface has a simulation fallback, so the full software stack can be developed and tested without the physical garden.</text>
+  <text x="620" y="840" text-anchor="middle" font-size="10.5" fill="#6B7280">All state changes are logged to SQLite and reflected on the dashboard within seconds.</text>
+</svg>

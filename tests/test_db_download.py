@@ -56,3 +56,39 @@ def test_database_download_returns_sqlite_file(tmp_path):
     for c in (ctrl.stop, db.close):
         try: c()
         except Exception: pass
+
+
+def test_database_export_returns_json(tmp_path):
+    cfg = {
+        "system": {"name": "T", "simulate_hardware": True, "timezone": "UTC", "tick_seconds": 0.05},
+        "database": {"path": str(tmp_path / "test.db")},
+        "npk": {"enabled": False, "thresholds": {"nitrogen": 20, "phosphorus": 20, "potassium": 20}},
+        "soil_moisture": {"enabled": False},
+        "relays": {"active_high": True, "auto_off_watchdog_seconds": 10, "watchdog_check_seconds": 0.05, "default_duration_seconds": 5, "items": []},
+        "pest_detection": {"enabled": False},
+        "camera": {"enabled": False},
+    }
+    state = SystemState(cfg)
+    db = Database(cfg["database"]["path"])
+    ctrl = AutomationController(config=cfg, db=db, relays=RelayController(cfg["relays"], simulate=True), state=state, sensors={"npk": None, "moisture": MagicMock()})
+    app = create_app(state=state, config=cfg, controller=ctrl, db=db, camera=NotConfiguredCamera(), config_path=tmp_path / "c.yaml")
+    app.config["TESTING"] = True
+    client = app.test_client()
+
+    # seed a row
+    db._execute("INSERT INTO system_events (timestamp, level, source, message) VALUES (?,?,?,?)",
+                ("2026-01-01T00:00:00", "INFO", "test", "export-me"))
+
+    resp = client.get("/api/database/export")
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert payload["ok"] is True
+    assert isinstance(payload["data"], dict)
+    # export_all_tables always includes the known table names
+    assert "system_events" in payload["data"]
+    messages = [row["message"] for row in payload["data"]["system_events"]]
+    assert "export-me" in messages
+
+    for c in (ctrl.stop, db.close):
+        try: c()
+        except Exception: pass

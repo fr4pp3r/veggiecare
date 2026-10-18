@@ -23,6 +23,7 @@ Safety
 
 from __future__ import annotations
 
+import inspect
 import logging
 import math
 import queue
@@ -926,11 +927,15 @@ class AutomationController:
         if with_stepper and self._stepper is None:
             return False, "Stepper motor is not available."
         if self._pest_active:
+            # Merge-only update: the previous detection result must stay
+            # intact — this refusal is not a scan outcome.
+            self._state.update_pest(reason="scan_busy")
             return False, "A pest scan is already running."
 
         mode = "sweep" if with_stepper else "camera"
         source = "dashboard_sweep" if with_stepper else "dashboard_camera"
         if not self._enqueue_pest_task(mode, source):
+            self._state.update_pest(reason="scan_busy")
             return False, "A pest scan is already running."
         if with_stepper:
             return True, "Sweep requested — the camera is moving; results appear shortly."
@@ -999,6 +1004,10 @@ class AutomationController:
 
         ``save_path`` lets a sweep overwrite a single temp frame instead of
         writing one image per analysis to disk.
+
+        The sweep case passes ``roi="full"`` (the stepper motion already
+        covers physical regions) to detectors that expose the parameter;
+        older/mock detector signatures without ``roi`` are still supported.
         """
         image_path = None
         if self._camera is not None:
@@ -1009,11 +1018,167 @@ class AutomationController:
                 self._log_event("ERROR", "camera", str(exc))
                 return None
         try:
-            return self._detector.detect(image_path=image_path)
+            try:
+                fn = self._detector.detect
+                if "roi" in inspect.signature(fn).parameters:
+                    return fn(image_path=image_path, roi="full")
+            except (TypeError, ValueError):
+                pass
+            return fn(image_path=image_path)
         except Exception as exc:
             self._state.update_pest(error=str(exc), suggestion=None)
             self._log_event("ERROR", "pest_detection", str(exc))
             return None
+
+    def _detector_ready(self) -> bool:
+        """True when the detector reports a usable (configured) model.
+
+        A detector whose ``status()`` cannot be read or reports
+        ``configured: false`` cannot run inference; ``detect()`` would only
+        return a null result with ``confidence=None``.
+        """
+        status_fn = getattr(self._detector, "status", None)
+        if status_fn is None:
+            return True  # contract-compatible detector without status()
+        try:
+            return bool(dict(status_fn()).get("configured", False))
+        except Exception:
+            return False
+
+    def _pest_record_error(self, settings: dict, status: str, reason: str,
+                           error: str, source: str, frames: int = 0,
+                           model: str | None = None,
+                           camera: str | None = None) -> None:
+        """Record a failed scan in state (no DB row, no relay)."""
+        self._apply_pest_result(
+            source=source,
+            settings=settings,
+            status="error",
+            reason=reason,
+            confidence=None,
+            pest_class=None,
+            frames=frames,
+            error=error,
+            model=model,
+            camera=camera,
+            insert_row=False,
+            alert_on_detect=False,
+        )
+
+    def _apply_pest_result(
+        self,
+        *,
+        source: str,
+        settings: dict,
+        confidence: float | None,
+        pest_class: str | None,
+        status: str | None = None,
+        reason: str | None = None,
+        frames: int = 1,
+        image_path: str | None = None,
+        ts: str | None = None,
+        model: str | None = None,
+        camera: str | None = None,
+        error: str | None = None,
+        insert_row: bool = True,
+        alert_on_detect: bool = True,
+    ) -> None:
+        """Classify one completed scan into the confidence band, update the
+        shared state, persist one DB row and fire the pest response.
+
+        Band (evaluated on the best frame of the scan):
+        * conf >= confidence_threshold  -> status "detected" (relay + suggestion)
+        * low <= conf < threshold       -> status "possible" (no relay)
+        * conf < low (or None)          -> status "clear"
+        Error-classified scans (status="error") never touch relays or DB.
+        """
+        threshold = float(settings.get("confidence_threshold", 0.70))
+        low = float(settings.get("low_confidence_threshold", 0.45))
+
+        if status is None:
+            if confidence is not None and confidence >= threshold:
+                status = "detected"
+            elif confidence is not None and confidence >= low:
+                status = "possible"
+            else:
+                status = "clear"
+        if reason is None:
+            reason = {
+                "detected": "ok",
+                "possible": "low_confidence",
+                "clear": "below_threshold",
+                "error": "exception",
+            }.get(status, "exception")
+
+        detected = status == "detected"
+        has_class = status in ("detected", "possible")
+        ts = ts or datetime.now().isoformat(timespec="seconds")
+        model = model or getattr(self._detector, "name", "unknown")
+
+        suggestion = None
+        if detected and self._treatment_advisor is not None:
+            try:
+                advice = self._treatment_advisor.suggest(pest_class)
+                suggestion = advice.to_dict() if advice is not None else None
+            except Exception as exc:
+                logger.error("Treatment advice failed: %s", exc)
+                suggestion = None
+
+        self._state.update_pest(
+            detected=detected,
+            pest_class=pest_class if has_class else None,
+            confidence=confidence,
+            image_path=image_path,
+            timestamp=ts,
+            model=model,
+            error=error,
+            configured=True,
+            suggestion=suggestion,
+            status=status,
+            reason=reason,
+            frames=frames,
+        )
+
+        if not insert_row:
+            return
+
+        try:
+            self._db.insert_pest_detection(
+                detected=detected,
+                pest_class=pest_class if has_class else None,
+                confidence=confidence,
+                image_path=image_path,
+                model=model,
+                camera=camera,
+                timestamp=ts,
+                suggestion=suggestion,
+            )
+            self._state.update_db(ok=True, last_write=ts)
+        except DatabaseError as exc:
+            self._state.update_db(ok=False, error=str(exc))
+            logger.error("DB write failed (pest detection): %s", exc)
+
+        if not detected or not alert_on_detect:
+            return
+
+        alert_msg = (
+            f"Pest detected: {pest_class} "
+            f"(confidence {(confidence if confidence is not None else 0.0):.2f})"
+        )
+        self._state.add_alert("WARNING", alert_msg, source)
+        self._log_event("WARNING", source, alert_msg)
+        self._notify_pesticide(suggestion, source)
+
+        relay_id = int(settings.get("relay_id", 3))
+        # Use the relay's own configured duration
+        relay_items = self._cfg.get("relays", {}).get("items", [])
+        duration = float(settings.get("relay_activation_duration_seconds", 120))
+        for item in relay_items:
+            if int(item.get("id", 0)) == relay_id:
+                duration = float(item.get("activation_duration_seconds", duration))
+                break
+
+        self._activate_pest_response(relay_id, duration, ts, source)
 
     def _run_sweep(self, task: PestTask) -> None:
         """Drive the camera out and back, analysing frames as it moves.
@@ -1039,7 +1204,9 @@ class AutomationController:
         sweep_path = Path(tempfile.gettempdir()) / "veggiecare_sweep.jpg"
         extended = 0
         chunks = 0
+        analyzed = 0
         detection = None
+        best_result = None
         motion_error = None
 
         try:
@@ -1053,11 +1220,17 @@ class AutomationController:
                 extended += chunk
                 chunks += 1
                 result = self._capture_and_detect(save_path=sweep_path)
-                if result is not None and result.detected and (
-                    result.confidence is None or result.confidence >= threshold
-                ):
-                    detection = result
-                    break
+                if result is not None:
+                    analyzed += 1
+                    if best_result is None or (
+                        (result.confidence or 0.0) > (best_result.confidence or 0.0)
+                    ):
+                        best_result = result
+                    if result.detected and (
+                        result.confidence is None or result.confidence >= threshold
+                    ):
+                        detection = result
+                        break
         except Exception as exc:
             logger.exception("Pest sweep motion failed")
             motion_error = str(exc)
@@ -1078,163 +1251,170 @@ class AutomationController:
             "INFO", task.source,
             f"Pest sweep finished ({chunks} analyses, {extended} steps out)",
         )
-        self._handle_sweep_result(detection, task.source, error=motion_error)
+        self._handle_sweep_result(
+            detection, task.source,
+            error=motion_error, frames=analyzed, best_result=best_result,
+            settings=pest_cfg,
+        )
 
     def _run_camera_only(self, task: PestTask) -> None:
         self._pest_cycle(
             time.monotonic(), self._cfg.get("pest_detection", {}), source=task.source,
         )
 
-    def _handle_sweep_result(self, result: Any, source: str, error: str | None = None) -> None:
-        """Record one summary row per sweep and respond once when detected."""
-        pest_cfg = self._cfg.get("pest_detection", {})
-        threshold = float(pest_cfg.get("confidence_threshold", 0.70))
-        detected = bool(
-            result is not None
-            and result.detected
-            and (result.confidence is None or result.confidence >= threshold)
-        )
-        ts = datetime.now().isoformat(timespec="seconds")
-        model = result.model if result is not None else getattr(self._detector, "name", "unknown")
-        image_path = getattr(result, "image_path", None) if result is not None else None
+    def _handle_sweep_result(
+        self,
+        result: Any,
+        source: str,
+        error: str | None = None,
+        frames: int = 0,
+        best_result: Any = None,
+        settings: dict | None = None,
+    ) -> None:
+        """Record one summary row per sweep and respond once when detected.
 
-        suggestion = None
-        if self._treatment_advisor is not None and detected:
-            try:
-                advice = self._treatment_advisor.suggest(result.pest_class if result is not None else None)
-                suggestion = advice.to_dict() if advice is not None else None
-            except Exception as exc:
-                logger.error("Treatment advice failed: %s", exc)
-                suggestion = None
-
-        self._state.update_pest(
-            detected=detected,
-            pest_class=result.pest_class if detected else None,
-            confidence=result.confidence if detected else None,
-            image_path=image_path,
-            timestamp=ts,
-            model=model,
-            error=error,
-            configured=True,
-            suggestion=suggestion,
-        )
-
-        try:
-            self._db.insert_pest_detection(
-                detected=detected,
-                pest_class=result.pest_class if detected else None,
-                confidence=result.confidence if detected else None,
-                image_path=image_path,
-                model=model,
-                camera=getattr(self._camera, "name", None) if self._camera else None,
-                timestamp=ts,
-                suggestion=suggestion,
-            )
-            self._state.update_db(ok=True, last_write=ts)
-        except DatabaseError as exc:
-            self._state.update_db(ok=False, error=str(exc))
-            logger.error("DB write failed (pest sweep): %s", exc)
-
-        if not detected:
-            return
-
-        alert_msg = f"Pest detected: {result.pest_class} (confidence {result.confidence:.2f})"
-        self._state.add_alert("WARNING", alert_msg, source)
-        self._log_event("WARNING", source, alert_msg)
-        self._notify_pesticide(suggestion, source)
-
-        relay_id = int(pest_cfg.get("relay_id", 3))
-        duration = float(pest_cfg.get("relay_activation_duration_seconds", 120))
-        for item in self._cfg.get("relays", {}).get("items", []):
-            if int(item.get("id", 0)) == relay_id:
-                duration = float(item.get("activation_duration_seconds", duration))
-                break
-        self._activate_pest_response(relay_id, duration, ts, source)
-
-    def _pest_cycle(self, now: float, cfg: dict, source: str = "pest_detection") -> None:
-        self._last_pest_cycle = now
-
-        # Capture
-        image_path = None
-        if self._camera is not None:
-            try:
-                image_path = self._camera.capture()
-            except Exception as exc:
-                self._state.update_camera(error=str(exc))
-                self._log_event("ERROR", "camera", str(exc))
-                return
-
-        # Detect
-        try:
-            result = self._detector.detect(image_path=image_path)
-        except Exception as exc:
-            self._state.update_pest(error=str(exc), suggestion=None)
-            self._log_event("ERROR", "pest_detection", str(exc))
-            return
-
-        ts = result.timestamp.isoformat(timespec="seconds") if result.timestamp else datetime.now().isoformat(timespec="seconds")
-        confidence_threshold = float(cfg.get("confidence_threshold", 0.70))
-
-        effective_detected = (
-            result.detected
-            and (result.confidence is None or result.confidence >= confidence_threshold)
-        )
-
-        suggestion = None
-        if self._treatment_advisor is not None and effective_detected:
-            try:
-                advice = self._treatment_advisor.suggest(result.pest_class)
-                suggestion = advice.to_dict() if advice is not None else None
-            except Exception as exc:
-                logger.error("Treatment advice failed: %s", exc)
-                suggestion = None
-
-        self._state.update_pest(
-            detected=effective_detected,
-            pest_class=result.pest_class,
-            confidence=result.confidence,
-            image_path=result.image_path,
-            timestamp=ts,
-            model=result.model,
-            error=None,
-            configured=True,
-            suggestion=suggestion,
-        )
-
-        # Database record
-        try:
-            self._db.insert_pest_detection(
-                detected=effective_detected,
-                pest_class=result.pest_class,
+        ``result`` is the confirmed DetectionResult (if any). Without one the
+        sweep is classified on the best frame collected across it: within the
+        low-confidence band the scan is ``possible``, otherwise ``clear``.
+        """
+        settings = settings if settings is not None else self._cfg.get("pest_detection", {})
+        if result is not None:
+            self._apply_pest_result(
+                source=source,
+                settings=settings,
                 confidence=result.confidence,
+                pest_class=result.pest_class,
+                frames=frames,
                 image_path=result.image_path,
+                ts=result.timestamp.isoformat(timespec="seconds") if result.timestamp else None,
                 model=result.model,
                 camera=getattr(self._camera, "name", None) if self._camera else None,
-                timestamp=ts,
-                suggestion=suggestion,
+                error=error,
             )
-            self._state.update_db(ok=True, last_write=ts)
-        except DatabaseError as exc:
-            self._state.update_db(ok=False, error=str(exc))
-            logger.error("DB write failed (pest detection): %s", exc)
+            return
 
-        # Alert + Relay 3
-        if effective_detected:
-            alert_msg = f"Pest detected: {result.pest_class} (confidence {result.confidence:.2f})"
-            self._state.add_alert("WARNING", alert_msg, source)
-            self._log_event("WARNING", source, alert_msg)
-            self._notify_pesticide(suggestion, source)
+        best = best_result
+        best_conf = best.confidence if best is not None else None
+        best_class = best.pest_class if best is not None else None
+        ts = best.timestamp.isoformat(timespec="seconds") if best is not None and best.timestamp else None
+        self._apply_pest_result(
+            source=source,
+            settings=settings,
+            confidence=best_conf,
+            pest_class=best_class,
+            frames=frames,
+            image_path=getattr(best, "image_path", None),
+            ts=ts,
+            model=best.model if best is not None else None,
+            camera=getattr(self._camera, "name", None) if self._camera else None,
+            error=error,
+        )
 
-            relay_id = int(cfg.get("relay_id", 3))
-            # Use the relay's own configured duration
-            relay_cfg = self._cfg.get("relays", {}).get("items", [])
-            duration = float(cfg.get("relay_activation_duration_seconds", 120))
-            for item in relay_cfg:
-                if int(item.get("id", 0)) == relay_id:
-                    duration = float(item.get("activation_duration_seconds", duration))
-                    break
+    def _pest_cycle(self, now: float, cfg: dict, source: str = "pest_detection") -> None:
+        """One manual/automatic camera-only pest scan: multi-frame best-of.
 
-            self._activate_pest_response(relay_id, duration, ts, source)
+        Captures up to ``manual_scan_frames`` frames (``manual_scan_delay_seconds``
+        between frames), stops early once a frame reaches the confidence
+        threshold, and classifies the best frame. Failures are recorded with an
+        explicit outcome so the UI can tell "no pest" from "scan failed".
+        """
+        self._last_pest_cycle = now
+
+        camera_name = getattr(self._camera, "name", None) if self._camera else None
+
+        # Detector availability gate: detect() on an unloaded model returns
+        # confidence=None, which must not be mistaken for a clean scan.
+        if not self._detector_ready():
+            self._pest_record_error(
+                cfg,
+                status="error",
+                reason="model_unavailable",
+                error="Pest scan failed: detector model is not loaded / configured",
+                source=source,
+                model=getattr(self._detector, "name", "unknown"),
+                camera=camera_name,
+            )
+            return
+
+        threshold = float(cfg.get("confidence_threshold", 0.70))
+        max_frames = max(1, int(cfg.get("manual_scan_frames", 5)))
+        frame_delay = max(0.0, float(cfg.get("manual_scan_delay_seconds", 0.5)))
+
+        best = None
+        analyzed = 0
+
+        for index in range(max_frames):
+            # Capture (a failed capture aborts: detect() on no image cannot
+            # yield a result, and reporting a clean scan would be a lie).
+            image_path = None
+            if self._camera is not None:
+                try:
+                    image_path = self._camera.capture()
+                except Exception as exc:
+                    self._state.update_camera(error=str(exc))
+                    self._log_event("ERROR", "camera", str(exc))
+                    self._pest_record_error(
+                        cfg,
+                        status="error",
+                        reason="capture_failed",
+                        error=f"Camera capture failed: {exc}",
+                        source=source,
+                        frames=analyzed,
+                        camera=camera_name,
+                    )
+                    return
+                if image_path is None:
+                    self._log_event("ERROR", "camera", "Camera capture returned no image")
+                    self._pest_record_error(
+                        cfg,
+                        status="error",
+                        reason="capture_failed",
+                        error="Camera capture failed: no frame was captured",
+                        source=source,
+                        frames=analyzed,
+                        camera=camera_name,
+                    )
+                    return
+
+            # Detect
+            try:
+                result = self._detector.detect(image_path=image_path)
+            except Exception as exc:
+                self._pest_record_error(
+                    cfg,
+                    status="error",
+                    reason="exception",
+                    error=str(exc),
+                    source=source,
+                    frames=analyzed,
+                    camera=camera_name,
+                )
+                return
+
+            analyzed += 1
+            if best is None or (
+                (result.confidence or 0.0) > (best.confidence or 0.0)
+            ):
+                best = result
+            # Early stop: a frame is confirmed — no more frames needed.
+            if result.confidence is not None and result.confidence >= threshold:
+                break
+            if index + 1 < max_frames and frame_delay > 0:
+                time.sleep(frame_delay)
+
+        ts = best.timestamp.isoformat(timespec="seconds") if best.timestamp else None
+        self._apply_pest_result(
+            source=source,
+            settings=cfg,
+            confidence=best.confidence,
+            pest_class=best.pest_class,
+            frames=analyzed,
+            image_path=best.image_path,
+            ts=ts,
+            model=best.model,
+            camera=camera_name,
+            error=None,
+        )
 
     # ------------------------------------------------------------------
     # manual / external activation
@@ -1451,64 +1631,30 @@ class AutomationController:
         """Shared logic for handling a DetectionResult (real or injected)."""
         pest_cfg = self._cfg.get("pest_detection", {})
         ts = result.timestamp.isoformat(timespec="seconds") if hasattr(result, "timestamp") and result.timestamp else datetime.now().isoformat(timespec="seconds")
-        confidence_threshold = float(pest_cfg.get("confidence_threshold", 0.70))
+        low = float(pest_cfg.get("low_confidence_threshold", 0.45))
 
-        effective_detected = (
-            result.detected
-            and (result.confidence is None or result.confidence >= confidence_threshold)
-        )
+        # Injected results are authoritative: their ``detected`` flag decides
+        # the outcome even when confidence alone would land in another band.
+        if result.detected:
+            status, reason, eff_conf = "detected", "ok", result.confidence
+        elif result.confidence is not None and result.confidence >= low:
+            status, reason, eff_conf = "possible", "low_confidence", result.confidence
+        else:
+            status, reason, eff_conf = "clear", "below_threshold", result.confidence
 
-        suggestion = None
-        if self._treatment_advisor is not None and effective_detected:
-            try:
-                advice = self._treatment_advisor.suggest(result.pest_class)
-                suggestion = advice.to_dict() if advice is not None else None
-            except Exception as exc:
-                logger.error("Treatment advice failed: %s", exc)
-                suggestion = None
-
-        self._state.update_pest(
-            detected=effective_detected,
+        self._apply_pest_result(
+            source=source,
+            settings=pest_cfg,
+            status=status,
+            reason=reason,
+            confidence=eff_conf,
             pest_class=result.pest_class,
-            confidence=result.confidence,
             image_path=getattr(result, "image_path", None),
-            timestamp=ts,
+            ts=ts,
             model=result.model,
+            camera="simulated",
             error=None,
-            configured=True,
-            suggestion=suggestion,
         )
-
-        try:
-            self._db.insert_pest_detection(
-                detected=effective_detected,
-                pest_class=result.pest_class,
-                confidence=result.confidence,
-                image_path=getattr(result, "image_path", None),
-                model=result.model,
-                camera="simulated",
-                timestamp=ts,
-                suggestion=suggestion,
-            )
-            self._state.update_db(ok=True, last_write=ts)
-        except DatabaseError as exc:
-            logger.error("DB write failed (pest detection): %s", exc)
-
-        if effective_detected:
-            alert_msg = f"Pest detected: {result.pest_class} (confidence {result.confidence:.2f})"
-            self._state.add_alert("WARNING", alert_msg, source)
-            self._log_event("WARNING", source, alert_msg)
-            self._notify_pesticide(suggestion, source)
-
-            relay_id = int(pest_cfg.get("relay_id", 3))
-            relay_items = self._cfg.get("relays", {}).get("items", [])
-            duration = float(pest_cfg.get("relay_activation_duration_seconds", 120))
-            for item in relay_items:
-                if int(item.get("id", 0)) == relay_id:
-                    duration = float(item.get("activation_duration_seconds", duration))
-                    break
-
-            self._activate_pest_response(relay_id, duration, ts, source)
 
     @staticmethod
     def _pesticide_label(suggestion: Any) -> str | None:

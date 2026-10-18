@@ -108,6 +108,13 @@ Without a backend, every relay is marked `available: false` and fails silently.
 ### Pest Detection Monthly Limit
 Only the pest response relay (Relay 3) has a monthly activation limit (`max_activations_per_month: 2`). NPK alerts and soil-moisture watering are **never limited**. The limit resets each calendar month.
 
+### Pest Confidence Band & ROI Scanning
+The "detector" is a whole-frame **classification** model (9 classes, 224px). Marginal frames swing around the threshold, so:
+- `confidence_threshold: 0.70` → confirmed (`status: detected`), triggers relay. `low_confidence_threshold: 0.45`–0.70 → `status: possible` (dashboard warning only, **no relay**). Below → `status: clear`.
+- Manual "Check now" scans are multi-frame best-of (`manual_scan_frames: 5`, early-stops on confirmed). Automatic sweeps stay single-frame-per-chunk (stepper motion covers angles).
+- `roi: full | center | grid | [x,y,w,h]` (fractions). `grid` = full frame first, 2×2 tiles only if the full frame misses (performance guard). Sweeps always pass `roi="full"`.
+- `state.pest` carries `status` / `reason` (`ok|low_confidence|below_threshold|capture_failed|model_unavailable|exception|scan_busy`) / `frames`; the dashboard distinguishes failed scans from genuine negatives.
+
 ### Watering Cooldown
 After auto-watering, `watering_cooldown_seconds` (default 3600) prevents immediate re-trigger even if moisture is still low.
 

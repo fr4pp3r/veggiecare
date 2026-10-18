@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2240" height="1960" viewBox="0 0 1120 980" font-family="Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#374151"/>
+    </marker>
+  </defs>
+  <rect width="1120" height="980" fill="#FFFFFF"/>
+  <text x="560" y="32" text-anchor="middle" font-size="20" font-weight="700" fill="#111827">Closed&#8209;Loop Automatic Watering Policy</text>
+  <text x="560" y="52" text-anchor="middle" font-size="12" fill="#6B7280">How VeggieCare decides when to water, how much, and when to stop for safety</text>
+
+  <!-- start -->
+  <rect x="330" y="72" width="460" height="44" rx="22" fill="#ECFDF5" stroke="#059669" stroke-width="1.6"/>
+  <text x="560" y="99" text-anchor="middle" font-size="12.5" font-weight="700" fill="#065F46">Soil moisture reading (20&#8209;sample average, every 5&#8211;30 s)</text>
+  <line x1="560" y1="116" x2="560" y2="146" stroke="#374151" stroke-width="1.6" marker-end="url(#arr)"/>
+
+  <!-- D1 -->
+  <polygon points="560,148 720,196 560,244 400,196" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.6"/>
+  <text x="560" y="191" text-anchor="middle" font-size="12.5" fill="#111827">Below threshold</text>
+  <text x="560" y="208" text-anchor="middle" font-size="12.5" fill="#111827">(30%)?</text>
+  <line x1="720" y1="196" x2="790" y2="196" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="738" y="188" font-size="10" fill="#6B7280">no</text>
+  <rect x="792" y="164" width="290" height="64" rx="8" fill="#F9FAFB" stroke="#9CA3AF" stroke-width="1.3"/>
+  <text x="937" y="188" text-anchor="middle" font-size="11.5" font-weight="700" fill="#111827">Idle &#8212; hysteresis latch</text>
+  <text x="937" y="206" text-anchor="middle" font-size="10.5" fill="#374151">once a dry state is latched it clears only</text>
+  <text x="937" y="220" text-anchor="middle" font-size="10.5" fill="#374151">when moisture reaches &#8805; 35% (30 + 5)</text>
+
+  <line x1="560" y1="244" x2="560" y2="274" stroke="#374151" stroke-width="1.6" marker-end="url(#arr)"/>
+  <text x="572" y="264" font-size="10" fill="#6B7280">yes</text>
+
+  <!-- D2 -->
+  <polygon points="560,276 725,324 560,372 395,324" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.6"/>
+  <text x="560" y="318" text-anchor="middle" font-size="12.5" fill="#111827">Daily budget available?</text>
+  <text x="560" y="335" text-anchor="middle" font-size="11.5" fill="#374151">(hard cap 30 min of watering per day)</text>
+  <line x1="725" y1="324" x2="790" y2="324" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="742" y="316" font-size="10" fill="#6B7280">no</text>
+  <rect x="792" y="292" width="290" height="64" rx="8" fill="#FEE2E2" stroke="#DC2626" stroke-width="1.3"/>
+  <text x="937" y="316" text-anchor="middle" font-size="11.5" font-weight="700" fill="#111827">Watering blocked today</text>
+  <text x="937" y="334" text-anchor="middle" font-size="10.5" fill="#374151">WARNING raised once per day; the</text>
+  <text x="937" y="348" text-anchor="middle" font-size="10.5" fill="#374151">farmer can still water manually</text>
+
+  <line x1="560" y1="372" x2="560" y2="402" stroke="#374151" stroke-width="1.6" marker-end="url(#arr)"/>
+  <text x="572" y="392" font-size="10" fill="#6B7280">yes</text>
+
+  <!-- P1 water -->
+  <rect x="330" y="404" width="460" height="64" rx="10" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.6"/>
+  <text x="560" y="428" text-anchor="middle" font-size="12.5" font-weight="700" fill="#111827">Record baseline moisture; Relay 2 ON</text>
+  <text x="560" y="448" text-anchor="middle" font-size="11" fill="#374151">water pump runs for the configured dose (e.g. 120 s); the daily budget is debited</text>
+  <line x1="560" y1="468" x2="560" y2="496" stroke="#374151" stroke-width="1.6" marker-end="url(#arr)"/>
+
+  <!-- P2 cooldown -->
+  <rect x="330" y="498" width="460" height="56" rx="10" fill="#ECFDF5" stroke="#059669" stroke-width="1.5"/>
+  <text x="560" y="522" text-anchor="middle" font-size="12.5" font-weight="700" fill="#065F46">Cooldown / response&#8209;observation window</text>
+  <text x="560" y="540" text-anchor="middle" font-size="11" fill="#374151">default 15 min: no new watering starts while the soil&#8217;s reaction is being watched</text>
+  <line x1="560" y1="554" x2="560" y2="582" stroke="#374151" stroke-width="1.6" marker-end="url(#arr)"/>
+
+  <!-- D3 response -->
+  <polygon points="560,584 730,632 560,680 390,632" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.6"/>
+  <text x="560" y="626" text-anchor="middle" font-size="12.5" fill="#111827">Moisture rose &#8805; 2% from</text>
+  <text x="560" y="643" text-anchor="middle" font-size="12.5" fill="#111827">the baseline?</text>
+  <line x1="730" y1="632" x2="790" y2="632" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="748" y="624" font-size="10" fill="#6B7280">yes</text>
+  <rect x="792" y="600" width="290" height="64" rx="8" fill="#ECFDF5" stroke="#059669" stroke-width="1.3"/>
+  <text x="937" y="624" text-anchor="middle" font-size="11.5" font-weight="700" fill="#111827">Watering confirmed &#183; healthy</text>
+  <text x="937" y="642" text-anchor="middle" font-size="10.5" fill="#374151">non&#8209;response counter reset to zero;</text>
+  <text x="937" y="656" text-anchor="middle" font-size="10.5" fill="#374151">system returns to normal monitoring</text>
+
+  <line x1="560" y1="680" x2="560" y2="708" stroke="#374151" stroke-width="1.6" marker-end="url(#arr)"/>
+  <text x="572" y="700" font-size="10" fill="#6B7280">no</text>
+
+  <!-- P3 counter -->
+  <rect x="415" y="710" width="290" height="40" rx="8" fill="#FEF3C7" stroke="#D97706" stroke-width="1.4"/>
+  <text x="560" y="735" text-anchor="middle" font-size="12" font-weight="700" fill="#111827">Non&#8209;response counter + 1</text>
+  <line x1="560" y1="750" x2="560" y2="778" stroke="#374151" stroke-width="1.6" marker-end="url(#arr)"/>
+
+  <!-- D4 -->
+  <polygon points="560,780 690,822 560,864 430,822" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.6"/>
+  <text x="560" y="826" text-anchor="middle" font-size="12.5" fill="#111827">Counter &#8805; 3?</text>
+  <line x1="430" y1="822" x2="360" y2="822" stroke="#374151" stroke-width="1.5" marker-end="url(#arr)"/>
+  <text x="388" y="814" font-size="10" fill="#6B7280">no</text>
+
+  <line x1="560" y1="864" x2="560" y2="892" stroke="#374151" stroke-width="1.6" marker-end="url(#arr)"/>
+  <text x="572" y="884" font-size="10" fill="#6B7280">yes</text>
+
+  <!-- FAULT -->
+  <rect x="330" y="894" width="460" height="64" rx="10" fill="#FEE2E2" stroke="#DC2626" stroke-width="1.8"/>
+  <text x="560" y="918" text-anchor="middle" font-size="12.5" font-weight="700" fill="#991B1B">FAULT LATCHED &#8212; automatic watering stops</text>
+  <text x="560" y="936" text-anchor="middle" font-size="11" fill="#374151">CRITICAL alert + dashboard banner &#8220;Watering stopped&#8221; with a Restart watering button</text>
+
+  <!-- fault clear annotation -->
+  <path d="M 790 926 L 960 926 L 960 700 L 937 700" fill="none" stroke="#DC2626" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#arr)"/>
+  <text x="968" y="820" font-size="10.5" fill="#991B1B">fault clears automatically</text>
+  <text x="968" y="834" font-size="10.5" fill="#991B1B">when moisture recovers</text>
+  <text x="968" y="848" font-size="10.5" fill="#991B1B">to &#8805; 35%, or on manual reset</text>
+
+  <!-- loop backs -->
+  <path d="M 360 822 L 300 822 L 300 100 L 328 100" fill="none" stroke="#6B7280" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arr)"/>
+  <text x="304" y="470" font-size="10.5" fill="#6B7280" transform="rotate(-90 304 470)">continue monitoring</text>
+  <path d="M 937 664 L 937 690 L 850 690 L 850 74 L 792 74" fill="none" stroke="#6B7280" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arr)"/>
+</svg>
