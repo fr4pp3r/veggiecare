@@ -812,6 +812,7 @@ class AutomationController:
 
         cfg = self._state.tanks.get(tank, {}) or {}
         dose_key = "fert_ml_per_cycle" if tank == "fertilizer" else "ml_per_activation"
+        pump_lph = float(refill.get("pump_lph") or 0) or float(cfg.get("pump_lph", 800) or 800)
         dose_size = float(refill.get("ml_per_dose_or_cycle") or 0) or float(cfg.get(dose_key, 250) or 250)
         if remaining <= 0:
             status = "empty"
@@ -827,12 +828,20 @@ class AutomationController:
             "ml_remaining_est": remaining,
             "status": status,
             "last_refill_at": refill_ts or None,
-            "pump_lph": float(refill.get("pump_lph") or 0) or float(cfg.get("pump_lph", 800) or 800),
+            "pump_lph": pump_lph,
         }
+        # "Amount each use" is persisted in the refill row (ml_per_dose_or_cycle
+        # is the derived value), so a restart restores both it and the cycle
+        # seconds it corresponds to — no need to re-derive from elsewhere.
+        updates[dose_key] = dose_size
+        dose_seconds = self._seconds_for_ml(dose_size, pump_lph)
+        if dose_seconds > 0:
+            updates["dose_cycle_seconds"] = dose_seconds
         declared_type = str(refill.get("tank_type") or "")
         if declared_type and declared_type != tank:
             updates["fertilizer_type" if tank == "fertilizer" else "pesticide_type"] = declared_type
         if tank == "fertilizer":
+            updates["min_ml_for_cycle"] = dose_size
             updates["npk_n"] = float(refill.get("npk_n") or 0)
             updates["npk_p"] = float(refill.get("npk_p") or 0)
             updates["npk_k"] = float(refill.get("npk_k") or 0)
@@ -1941,6 +1950,99 @@ class AutomationController:
             return 0.0
         return (ml * 3600.0) / (pump_lph * 1000.0)
 
+    def _tank_relay_cycle_seconds(self, tank: str) -> float | None:
+        """Cycle seconds of the relay that dispenses *tank*.
+
+        The "amount each use" is not a user-entered value: it is derived from
+        the pump rate and this relay's configurable ``activation_duration_seconds``.
+        The tank is mapped to a relay by name (the same mapping
+        :meth:`_tank_for_relay` uses), falling back to the canonical id
+        (1 = fertilizer, 3 = pest_response). Returns ``None`` when no matching
+        relay setup exists so callers can fall back to configured defaults.
+        """
+        wanted = ("fertilizer", "npk/fertilizer") if tank == "fertilizer" \
+            else ("pest_response", "pesticide")
+        fallback_id = 1 if tank == "fertilizer" else 3
+        try:
+            items = self._cfg.get("relays", {}).get("items", [])
+            chosen: dict[str, Any] | None = None
+            for item in items:
+                if str(item.get("name", "")).lower() in wanted:
+                    chosen = item
+                    break
+            if chosen is None:
+                for item in items:
+                    if int(item.get("id", 0)) == fallback_id:
+                        chosen = item
+                        break
+            if chosen is not None:
+                seconds = float(chosen.get("activation_duration_seconds", 0) or 0)
+                if seconds > 0:
+                    return seconds
+        except Exception:
+            pass
+        # Last resort: relay state seeded from the same config.
+        try:
+            relay = self._state.relays.get(fallback_id)
+            if relay:
+                seconds = float(relay.get("activation_duration_seconds", 0) or 0)
+                if seconds > 0:
+                    return seconds
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _total_ml_from_kwargs(kwargs: dict) -> float:
+        """Refill volume in mL, accepting litres (``total_liters``) first.
+
+        The dashboard form sends litres; the legacy ``total_ml`` key is still
+        honoured so older clients keep working.
+        """
+        liters = kwargs.get("total_liters")
+        if liters is not None:
+            try:
+                value = float(liters)
+            except (TypeError, ValueError):
+                raise ValueError("total_liters must be a number") from None
+            if value <= 0:
+                raise ValueError("total_liters must be > 0")
+            return value * 1000.0  # litres -> millilitres
+        return float(kwargs.get("total_ml", 0) or 0)
+
+    def _derive_dose_for_tank(
+        self,
+        tank: str,
+        kwargs: dict,
+        existing: dict,
+        pump_lph: float,
+        min_dose_seconds: float,
+    ) -> tuple[float, float]:
+        """Resolve ``(dose_ml, dose_cycle_seconds)`` for a tank refill.
+
+        The dose is derived from ``pump_lph`` and the dose relay's cycle
+        seconds — the client no longer sends it. An explicit override (legacy
+        clients/migration path) still wins when provided.
+        """
+        target_key = "fert_ml_per_cycle" if tank == "fertilizer" else "ml_per_activation"
+        explicit = kwargs.get(target_key)
+        if explicit is not None:
+            dose_ml = float(explicit)
+            if dose_ml <= 0:
+                raise ValueError(f"{target_key} must be > 0")
+            return dose_ml, self._seconds_for_ml(dose_ml, pump_lph)
+
+        cycle_seconds = self._tank_relay_cycle_seconds(tank)
+        if cycle_seconds is not None:
+            # Never derive below the meterability floor: a relay cycle shorter
+            # than min_dose_seconds would pump a sub-floor volume.
+            effective = max(float(cycle_seconds), float(min_dose_seconds or 0))
+            return self._ml_from_seconds(effective, pump_lph), effective
+
+        # No matching relay setup: fall back to the configured tank default.
+        dose_ml = float(self._resolve(kwargs, target_key, existing, 250))
+        return dose_ml, self._seconds_for_ml(dose_ml, pump_lph)
+
     @staticmethod
     def _resolve(kwargs: dict, key: str, existing: dict, default: Any) -> Any:
         """Prefer an explicit kwarg, then current tank state, then *default*.
@@ -1963,15 +2065,18 @@ class AutomationController:
             npk_n = float(kwargs.get("npk_n", 0) or 0)
             npk_p = float(kwargs.get("npk_p", 0) or 0)
             npk_k = float(kwargs.get("npk_k", 0) or 0)
-            total_ml = float(kwargs.get("total_ml", 0) or 0)
+            total_ml = self._total_ml_from_kwargs(kwargs)
             tank_capacity_ml = kwargs.get("tank_capacity_ml")
             pump_lph = float(self._resolve(kwargs, "pump_lph", existing, 800) or 800)
-            fert_ml_per_cycle = float(self._resolve(kwargs, "fert_ml_per_cycle", existing, 250))
             min_dose_seconds = float(self._resolve(kwargs, "min_dose_seconds", existing, 1.0) or 0)
             soak_days = float(self._resolve(kwargs, "soak_days", existing, 0) or 0)
             mode = str(self._resolve(kwargs, "mode", existing, "with_watering")).lower()
             if mode not in ("separate", "with_watering"):
                 mode = "with_watering"
+            # "Amount each use" is derived, not entered.
+            fert_ml_per_cycle, dose_cycle_seconds = self._derive_dose_for_tank(
+                "fertilizer", kwargs, existing, pump_lph, min_dose_seconds,
+            )
 
             if total_ml <= 0:
                 return False, "total_ml must be > 0"
@@ -1989,6 +2094,18 @@ class AutomationController:
                 )
 
             max_doses = int(total_ml // fert_ml_per_cycle) if fert_ml_per_cycle > 0 else 0
+            # tank_capacity_ml is no longer a form input: the tank holds at
+            # least what was just poured in. A larger historical capacity (or
+            # an explicit legacy value) still wins.
+            existing_capacity = float(existing.get("tank_capacity_ml", 0) or 0)
+            capacity_ml = max(existing_capacity, total_ml)
+            try:
+                declared_capacity = float(tank_capacity_ml) if tank_capacity_ml is not None else 0.0
+            except (TypeError, ValueError):
+                declared_capacity = 0.0
+            if declared_capacity > 0:
+                capacity_ml = max(capacity_ml, declared_capacity)
+
             updates = {
                 "fertilizer_type": fertilizer_type,
                 "npk_n": npk_n,
@@ -1999,6 +2116,7 @@ class AutomationController:
                 "ml_remaining_est": total_ml,
                 "pump_lph": pump_lph,
                 "fert_ml_per_cycle": fert_ml_per_cycle,
+                "dose_cycle_seconds": dose_cycle_seconds,
                 "min_ml_for_cycle": fert_ml_per_cycle,
                 "min_dose_seconds": min_dose_seconds,
                 "soak_days": soak_days,
@@ -2010,9 +2128,8 @@ class AutomationController:
                 "blocked_until_at": None,
                 "status": "full" if max_doses >= 1 else "empty",
                 "enabled": True,
+                "tank_capacity_ml": capacity_ml,
             }
-            if tank_capacity_ml is not None and tank_capacity_ml > 0:
-                updates["tank_capacity_ml"] = tank_capacity_ml
 
             self._state.update_tank("fertilizer", **updates)
             try:
@@ -2030,7 +2147,10 @@ class AutomationController:
                 )
             except Exception:
                 pass
-            return True, f"Fertilizer tank refilled ({total_ml:.0f} mL, {max_doses} cycles)"
+            return True, (
+                f"Fertilizer tank refilled ({total_ml / 1000.0:.2f} L, "
+                f"{max_doses} uses of {fert_ml_per_cycle:.0f} mL)"
+            )
         except Exception as exc:
             return False, f"Refill failed: {exc}"
 
@@ -2038,12 +2158,15 @@ class AutomationController:
         try:
             existing = dict(self._state.tanks.get("pesticide", {}))
             pesticide_type = str(kwargs.get("pesticide_type", "") or existing.get("pesticide_type", "")).strip()
-            total_ml = float(kwargs.get("total_ml", 0) or 0)
+            total_ml = self._total_ml_from_kwargs(kwargs)
             tank_capacity_ml = kwargs.get("tank_capacity_ml")
             pump_lph = float(self._resolve(kwargs, "pump_lph", existing, 800) or 800)
-            ml_per_activation = float(self._resolve(kwargs, "ml_per_activation", existing, 250))
             min_dose_seconds = float(self._resolve(kwargs, "min_dose_seconds", existing, 1.0) or 0)
             soak_days = float(self._resolve(kwargs, "soak_days", existing, 0) or 0)
+            # "Amount each use" is derived, not entered (relay 3 = pest_response).
+            ml_per_activation, dose_cycle_seconds = self._derive_dose_for_tank(
+                "pesticide", kwargs, existing, pump_lph, min_dose_seconds,
+            )
             # Display mirror only. The enforced cap has a single source of truth
             # (pest_detection.max_activations_per_month) so the dashboard can
             # never advertise a limit the controller does not actually apply.
@@ -2063,6 +2186,15 @@ class AutomationController:
                 )
 
             max_doses = int(total_ml // ml_per_activation) if ml_per_activation > 0 else 0
+            # Same capacity rule as the fertilizer tank: no form input.
+            existing_capacity = float(existing.get("tank_capacity_ml", 0) or 0)
+            capacity_ml = max(existing_capacity, total_ml)
+            try:
+                declared_capacity = float(tank_capacity_ml) if tank_capacity_ml is not None else 0.0
+            except (TypeError, ValueError):
+                declared_capacity = 0.0
+            if declared_capacity > 0:
+                capacity_ml = max(capacity_ml, declared_capacity)
             updates = {
                 "pesticide_type": pesticide_type,
                 "total_ml": total_ml,
@@ -2070,6 +2202,7 @@ class AutomationController:
                 "ml_remaining_est": total_ml,
                 "pump_lph": pump_lph,
                 "ml_per_activation": ml_per_activation,
+                "dose_cycle_seconds": dose_cycle_seconds,
                 "min_dose_seconds": min_dose_seconds,
                 "soak_days": soak_days,
                 "max_activations_per_month": max_activations_per_month,
@@ -2080,9 +2213,8 @@ class AutomationController:
                 "blocked_until_at": None,
                 "status": "full" if max_doses >= 1 else "empty",
                 "enabled": True,
+                "tank_capacity_ml": capacity_ml,
             }
-            if tank_capacity_ml is not None and tank_capacity_ml > 0:
-                updates["tank_capacity_ml"] = tank_capacity_ml
 
             self._state.update_tank("pesticide", **updates)
             try:
@@ -2097,7 +2229,10 @@ class AutomationController:
                 )
             except Exception:
                 pass
-            return True, f"Pesticide tank refilled ({total_ml:.0f} mL, {max_doses} activations)"
+            return True, (
+                f"Pesticide tank refilled ({total_ml / 1000.0:.2f} L, "
+                f"{max_doses} activations of {ml_per_activation:.0f} mL)"
+            )
         except Exception as exc:
             return False, f"Refill failed: {exc}"
 

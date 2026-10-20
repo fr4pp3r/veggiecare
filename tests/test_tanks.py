@@ -117,8 +117,10 @@ def test_state_exposes_tank_defaults():
     assert tanks["fertilizer"]["pump_lph"] == 800
     assert tanks["fertilizer"]["mode"] == "with_watering"
     assert tanks["fertilizer"]["min_dose_seconds"] == 1.0
+    assert tanks["fertilizer"]["dose_cycle_seconds"] == 60.0
     assert tanks["pesticide"]["mode"] == "separate"
     assert tanks["pesticide"]["min_dose_seconds"] == 1.0
+    assert tanks["pesticide"]["dose_cycle_seconds"] == 60.0
 
 
 def test_ml_from_seconds_is_millilitres():
@@ -158,10 +160,77 @@ def test_refill_sets_stock_and_counts_cycles(stack):
 
 
 def test_refill_defaults_to_a_meterable_dose(stack):
+    """No explicit dose: it is DERIVED (relay 1 cycle 2 s at 800 L/H)."""
     _, ctrl, state, _, _, _ = stack
     ok, msg = ctrl.refill_fertilizer_tank(total_ml=1000)
     assert ok, msg
-    assert state.snapshot()["tanks"]["fertilizer"]["fert_ml_per_cycle"] == 250
+    tank = state.snapshot()["tanks"]["fertilizer"]
+    assert tank["fert_ml_per_cycle"] == pytest.approx(ML_PER_SECOND * 2, abs=0.01)
+    assert tank["dose_cycle_seconds"] == pytest.approx(2.0, abs=0.001)
+
+
+def test_refill_accepts_litres_and_derives_dose(stack):
+    """The form sends litres; the dose comes from the pump x relay cycle."""
+    _, ctrl, state, _, db, _ = stack
+    ok, msg = ctrl.refill_fertilizer_tank(total_liters=5.0)
+    assert ok, msg
+    tank = state.snapshot()["tanks"]["fertilizer"]
+    assert tank["total_ml"] == pytest.approx(5000.0)
+    assert tank["ml_remaining_est"] == pytest.approx(5000.0)
+    derived = PUMP_LPH * 1000.0 * 2.0 / 3600.0  # 800 L/h x 2 s = ~444.4 mL
+    assert tank["fert_ml_per_cycle"] == pytest.approx(derived, abs=0.01)
+    assert tank["dose_cycle_seconds"] == pytest.approx(2.0, abs=0.001)
+    rows = db.recent_tank_refills()
+    assert rows[0]["total_ml"] == pytest.approx(5000.0)
+    assert rows[0]["ml_per_dose_or_cycle"] == pytest.approx(derived, abs=0.01)
+
+
+def test_refill_derives_13_33_L_per_use_at_800_lph_and_60s(stack):
+    """Contract pin: 800 L/h pump + 60 s fertilizer relay cycle = 13333.33 mL.
+
+    The dashboard's "amount each use" is computed from exactly these two
+    numbers — the pump rate and the relay's activation_duration_seconds —
+    at 800 L/h x 60 s that is 800 * 1000 * 60 / 3600 = 13333.33 mL (~13.3 L).
+    """
+    _, ctrl, state, _, _, _ = stack
+    ctrl._cfg["relays"]["items"][0]["activation_duration_seconds"] = 60.0
+    ok, msg = ctrl.refill_fertilizer_tank(total_liters=20.0)
+    assert ok, msg
+    tank = state.snapshot()["tanks"]["fertilizer"]
+    assert tank["fert_ml_per_cycle"] == pytest.approx(13333.33, abs=0.01)
+    assert tank["dose_cycle_seconds"] == pytest.approx(60.0, abs=0.001)
+    assert tank["total_ml"] == pytest.approx(20000.0)
+    assert tank["ml_remaining_est"] == pytest.approx(20000.0)
+    assert tank["status"] == "full"  # one full use fits in the refill
+
+
+def test_refill_derives_dose_for_pesticide_tank(stack):
+    """Relay 3 (pest_response) cycle seconds drive the pesticide dose too."""
+    _, ctrl, state, _, _, _ = stack
+    ok, msg = ctrl.refill_pesticide_tank(total_liters=2.0)
+    assert ok, msg
+    tank = state.snapshot()["tanks"]["pesticide"]
+    assert tank["total_ml"] == pytest.approx(2000.0)
+    assert tank["ml_per_activation"] == pytest.approx(ML_PER_SECOND * 2, abs=0.01)
+    assert tank["dose_cycle_seconds"] == pytest.approx(2.0, abs=0.001)
+
+
+def test_refill_capacity_grows_to_the_refill_amount(stack):
+    """tank_capacity_ml is no longer a form input: it tracks what was filled."""
+    _, ctrl, state, _, _, _ = stack
+    ctrl.refill_fertilizer_tank(total_liters=1.0)   # 1000 mL into a 5000 mL tank
+    assert state.snapshot()["tanks"]["fertilizer"]["tank_capacity_ml"] == 5000
+    ctrl.refill_fertilizer_tank(total_liters=10.0)  # 10000 mL > 5000 mL
+    tank = state.snapshot()["tanks"]["fertilizer"]
+    assert tank["tank_capacity_ml"] == pytest.approx(10000.0)
+    assert tank["total_ml"] == pytest.approx(10000.0)
+
+
+def test_refill_capacity_never_shrinks(stack):
+    _, ctrl, state, _, _, _ = stack
+    ctrl.refill_fertilizer_tank(total_liters=10.0)
+    ctrl.refill_fertilizer_tank(total_liters=0.5)  # smaller top-up
+    assert state.snapshot()["tanks"]["fertilizer"]["tank_capacity_ml"] == pytest.approx(10000.0)
 
 
 @pytest.mark.parametrize(
@@ -464,6 +533,18 @@ def test_seed_tank_state_restores_pesticide_type(stack):
     state.update_tank("pesticide", pesticide_type="")
     ctrl._seed_tank_state()
     assert state.snapshot()["tanks"]["pesticide"]["pesticide_type"] == "Neem Oil"
+
+
+def test_seed_restores_derived_dose_and_cycle(stack):
+    """A refill whose dose was DERIVED must reseed the same dose after restart."""
+    _, ctrl, state, _, _, _ = stack
+    ctrl.refill_fertilizer_tank(total_liters=2.0)  # derived: 800 L/h x 2 s
+    state.update_tank("fertilizer", ml_remaining_est=0.0)
+    ctrl._seed_tank_state()
+    tank = state.snapshot()["tanks"]["fertilizer"]
+    assert tank["fert_ml_per_cycle"] == pytest.approx(ML_PER_SECOND * 2, abs=0.01)
+    assert tank["dose_cycle_seconds"] == pytest.approx(2.0, abs=0.001)
+    assert tank["total_ml"] == pytest.approx(2000.0)
 
 
 def test_seed_tank_state_is_a_noop_without_a_refill(stack):

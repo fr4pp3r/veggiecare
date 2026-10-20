@@ -125,6 +125,7 @@
   let alertId = 0;
   let knownAlertKeys = new Set();
   let activeView = 'overview';
+  let lastTanks = {};
 
   // Notification panel state — read/dismissed keys persist in localStorage
   const NOTIF_READ_KEY = 'veggiecare.notif.read';
@@ -310,7 +311,7 @@
     renderAtAGlance(data);
 
     // Tanks (fertilizer + pesticide)
-    renderTanks(data.tanks);
+    renderTanks(data.tanks, data.relays);
     // Relays
     renderRelays(data.relays);
 
@@ -396,8 +397,9 @@
     }
   }
 
-  function renderTanks(tanks) {
+  function renderTanks(tanks, relays) {
     if (!tanks) return;
+    lastTanks = tanks;
     const fmtDate = (d) => d ? new Date(d).toLocaleString() : '-';
     const fmtLeft = (sec) => {
       if (sec === null || sec === undefined || isNaN(sec) || sec < 0) return '-';
@@ -414,58 +416,92 @@
       const cd = new Date(until).getTime() - Date.now();
       return cd > 0 ? fmtLeft(cd / 1000) : 'Ready';
     };
-
     const tankStatus = (t) => {
       if (t.empty) return 'Empty';
       if (t.low) return 'Low — refill soon';
       if (t.blocked_reason) return 'Blocked';
       return 'Ready';
     };
+    // Dose per use in litres: pump_lph × dose_cycle_seconds / 3600.
+    // Falls back to the server-provided per-cycle amount when cycle
+    // seconds aren't (yet) available in the snapshot.
+    const dosePerUse = (tank, relay) => {
+      const lph = tank.pump_lph || 0;
+      const cycleSec = tank.dose_cycle_seconds != null ? tank.dose_cycle_seconds
+        : (relay ? relay.activation_duration_seconds : null);
+      if (cycleSec != null && lph > 0) {
+        return { litres: (lph * cycleSec) / 3600, hint: lph.toFixed(0) + ' L/h × ' + cycleSec.toFixed(0) + ' s cycle' };
+      }
+      const perCycleMl = tank.fert_ml_per_cycle != null ? tank.fert_ml_per_cycle
+        : (tank.ml_per_activation != null ? tank.ml_per_activation : 0);
+      if (perCycleMl > 0) {
+        return { litres: perCycleMl / 1000, hint: perCycleMl.toFixed(0) + ' mL per use (server-set)' };
+      }
+      return { litres: 0, hint: '' };
+    };
+
+    const renderTank = (prefix, tank, relay, typeKey, lastUsedKey, extraRows) => {
+      const status = tankStatus(tank);
+      const statusEl = document.getElementById(`tank-${prefix}-status`);
+      statusEl.textContent = status;
+      statusEl.className = 'state ' +
+        (status === 'Ready' ? 'state-good' : status === 'Empty' ? 'state-bad' : 'state-warn');
+
+      const typeEl = document.getElementById(`tank-${prefix}-type`);
+      typeEl.textContent = tank[typeKey] || '-';
+
+      const remMl = tank.ml_remaining_est || 0;
+      const remL = remMl / 1000;
+      document.getElementById(`tank-${prefix}-rem`).textContent = remL.toFixed(1) + ' L';
+
+      // Fill level bar: remaining / capacity
+      const capacity = tank.tank_capacity_ml || 0;
+      const fillPct = capacity > 0 ? Math.min(100, Math.max(0, (remMl / capacity) * 100)) : 0;
+      const fillBar = document.getElementById(`tank-${prefix}-fill`);
+      const fillPctEl = document.getElementById(`tank-${prefix}-fill-pct`);
+      if (fillBar) {
+        fillBar.style.width = fillPct + '%';
+        fillBar.className = 'tank-fill-bar' +
+          (fillPct <= 10 ? ' fill-empty' : fillPct <= 30 ? ' fill-low' : '');
+      }
+      if (fillPctEl) fillPctEl.textContent = capacity > 0 ? fillPct.toFixed(0) + '%' : '—';
+
+      document.getElementById(`tank-${prefix}-rt`).textContent =
+        '~' + mlToSec(remMl, tank.pump_lph).toFixed(1) + 's of run time left';
+      document.getElementById(`tank-${prefix}-lastref`).textContent = fmtDate(tank.last_refill_at);
+      document.getElementById(`tank-${prefix}-lastfert`).textContent = fmtDate(tank[lastUsedKey]);
+      document.getElementById(`tank-${prefix}-cool`).textContent = coolFmt(tank.cooldown_until_at);
+      document.getElementById(`tank-${prefix}-auto`).textContent = tank.auto_enabled ? 'On' : 'Off';
+
+      // Amount each use — derived, shown in L with the derivation inline
+      const dose = dosePerUse(tank, relay);
+      const doseEl = document.getElementById(`tank-${prefix}-dose`);
+      const doseHintEl = document.getElementById(`tank-${prefix}-dose-hint`);
+      doseEl.textContent = dose.litres > 0 ? dose.litres.toFixed(1) + ' L per use' : '—';
+      if (doseHintEl) doseHintEl.textContent = dose.hint ? '(' + dose.hint + ')' : '';
+
+      const blockedEl = document.getElementById(`tank-${prefix}-blocked`);
+      blockedEl.textContent = tank.blocked_reason || '—';
+      blockedEl.classList.toggle('is-blocked', Boolean(tank.blocked_reason));
+
+      if (extraRows) extraRows(tank);
+    };
 
     const fert = tanks.fertilizer || {};
-    const fertStatus = tankStatus(fert);
-    document.getElementById('tank-fert-status').textContent = fertStatus;
-    document.getElementById('tank-fert-status').className = 'state ' +
-      (fertStatus === 'Ready' ? 'state-good' : fertStatus === 'Empty' ? 'state-bad' : 'state-warn');
-    document.getElementById('tank-fert-type').textContent = fert.fertilizer_type || '-';
-    document.getElementById('tank-fert-npk').textContent =
-      (fert.npk_n || 0) + '/' + (fert.npk_p || 0) + '/' + (fert.npk_k || 0);
-    const fertRem = fert.ml_remaining_est || 0;
-    document.getElementById('tank-fert-rem').textContent =
-      fertRem.toFixed(0) + ' mL';
-    document.getElementById('tank-fert-rt').textContent =
-      '~' + mlToSec(fertRem, fert.pump_lph).toFixed(1) + 's of run time left';
-    document.getElementById('tank-fert-lastref').textContent = fmtDate(fert.last_refill_at);
-    document.getElementById('tank-fert-lastfert').textContent = fmtDate(fert.last_fertilized_at);
-    document.getElementById('tank-fert-cool').textContent = coolFmt(fert.cooldown_until_at);
-    document.getElementById('tank-fert-auto').textContent = fert.auto_enabled ? 'On' : 'Off';
-    document.getElementById('tank-fert-mode').textContent = fert.mode === 'separate' ? 'Separate from watering' : 'Mixes with watering';
-    const fertDose = fert.fert_ml_per_cycle || 0;
-    document.getElementById('tank-fert-dose').textContent =
-      fertDose.toFixed(0) + ' mL each use';
-    const fertBlocked = document.getElementById('tank-fert-blocked');
-    fertBlocked.textContent = fert.blocked_reason || '—';
-    fertBlocked.classList.toggle('is-blocked', Boolean(fert.blocked_reason));
+    renderTank('fert', fert, relays?.find(r => r.id === 1),
+      'fertilizer_type', 'last_fertilized_at',
+      (t) => {
+        document.getElementById('tank-fert-npk').textContent =
+          (t.npk_n || 0) + '/' + (t.npk_p || 0) + '/' + (t.npk_k || 0);
+        document.getElementById('tank-fert-mode').textContent = t.mode === 'separate' ? 'Separate from watering' : 'Mixes with watering';
+      });
 
     const pest = tanks.pesticide || {};
-    const pestStatus = tankStatus(pest);
-    document.getElementById('tank-pest-status').textContent = pestStatus;
-    document.getElementById('tank-pest-status').className = 'state ' +
-      (pestStatus === 'Ready' ? 'state-good' : pestStatus === 'Empty' ? 'state-bad' : 'state-warn');
-    document.getElementById('tank-pest-type').textContent = pest.pesticide_type || '-';
-    const pestRem = pest.ml_remaining_est || 0;
-    document.getElementById('tank-pest-rem').textContent =
-      pestRem.toFixed(0) + ' mL';
-    document.getElementById('tank-pest-rt').textContent =
-      '~' + mlToSec(pestRem, pest.pump_lph).toFixed(1) + 's of run time left';
-    document.getElementById('tank-pest-lastref').textContent = fmtDate(pest.last_refill_at);
-    document.getElementById('tank-pest-lastpest').textContent = fmtDate(pest.last_pesticided_at);
-    document.getElementById('tank-pest-cool').textContent = coolFmt(pest.cooldown_until_at);
-    document.getElementById('tank-pest-auto').textContent = pest.auto_enabled ? 'On' : 'Off';
-    document.getElementById('tank-pest-month').textContent = pest.max_activations_per_month || '-';
-    const pestBlocked = document.getElementById('tank-pest-blocked');
-    pestBlocked.textContent = pest.blocked_reason || '—';
-    pestBlocked.classList.toggle('is-blocked', Boolean(pest.blocked_reason));
+    renderTank('pest', pest, relays?.find(r => r.id === 3),
+      'pesticide_type', 'last_pesticided_at',
+      (t) => {
+        document.getElementById('tank-pest-month').textContent = t.max_activations_per_month || '-';
+      });
   }
 
   function renderRelays(relays) {
@@ -1261,12 +1297,19 @@
   }
 
   function switchView(view) {
+    if (!view) return;
     activeView = view;
     els.navTabs.forEach(t => t.classList.toggle('active', t.dataset.view === view));
     document.getElementById('view-overview').classList.toggle('hidden', view !== 'overview');
     document.getElementById('view-logs').classList.toggle('hidden', view !== 'logs');
     document.getElementById('view-settings').classList.toggle('hidden', view !== 'settings');
     if (typeof updateBottomNav === 'function') updateBottomNav(view);
+    // Keep the URL in sync so deep links (/logs, /settings) survive refresh
+    // and back/forward navigation.
+    const path = { overview: '/', logs: '/logs', settings: '/settings' }[view];
+    if (path && window.location.pathname !== path) {
+      history.replaceState(null, '', path);
+    }
     if (view === 'logs') loadLogs();
     if (view === 'settings') loadSettings();
   }
@@ -1684,18 +1727,51 @@
   els.btnSimPest.addEventListener('click', simulatePest);
   els.btnWateringReset?.addEventListener('click', resetWateringFault);
 
+  // Live refill preview: "That's ≈ N uses at X L/h × Y s cycle"
+  function updateRefillPreview(litersInput, previewUsesEl, previewRateEl, tank) {
+    const liters = parseFloat(litersInput.value || '0');
+    const lph = tank.pump_lph || 0;
+    const cycleSec = tank.dose_cycle_seconds != null ? tank.dose_cycle_seconds : null;
+    let doseL, rateText;
+    if (cycleSec != null && lph > 0) {
+      doseL = (lph * cycleSec) / 3600;
+      rateText = lph.toFixed(0) + ' L/h × ' + cycleSec.toFixed(0) + ' s cycle';
+    } else {
+      const perCycleMl = tank.fert_ml_per_cycle != null ? tank.fert_ml_per_cycle
+        : (tank.ml_per_activation != null ? tank.ml_per_activation : 0);
+      doseL = perCycleMl / 1000;
+      rateText = perCycleMl > 0 ? perCycleMl.toFixed(0) + ' mL per use (server-set)' : '—';
+    }
+    if (liters > 0 && doseL > 0) {
+      previewUsesEl.textContent = (liters / doseL).toFixed(1);
+      previewRateEl.textContent = rateText;
+    } else {
+      previewUsesEl.textContent = '—';
+      previewRateEl.textContent = '—';
+    }
+    return liters > 0;
+  }
+
   // Tanks handlers
   const btnFertRef = document.getElementById('btn-fert-refill');
-  if (btnFertRef) {
+  const fertLiters = document.getElementById('fert-liters');
+  if (btnFertRef && fertLiters) {
+    fertLiters.addEventListener('input', () => {
+      const valid = updateRefillPreview(fertLiters,
+        document.getElementById('fert-preview-uses'),
+        document.getElementById('fert-preview-rate'),
+        lastTanks.fertilizer);
+      btnFertRef.disabled = !valid;
+    });
     btnFertRef.addEventListener('click', async () => {
+      const liters = parseFloat(fertLiters.value || '0');
+      if (liters <= 0) return;
       const body = {
         fertilizer_type: document.getElementById('fert-type').value,
         npk_n: parseFloat(document.getElementById('fert-n').value || '0'),
         npk_p: parseFloat(document.getElementById('fert-p').value || '0'),
         npk_k: parseFloat(document.getElementById('fert-k').value || '0'),
-        total_ml: parseFloat(document.getElementById('fert-total').value || '0'),
-        tank_capacity_ml: parseFloat(document.getElementById('fert-cap').value || '0') || null,
-        fert_ml_per_cycle: parseFloat(document.getElementById('fert-mlcycle').value || '250'),
+        total_liters: liters,
         soak_days: parseFloat(document.getElementById('fert-soak').value || '7'),
         mode: document.getElementById('fert-mode').value,
       };
@@ -1709,13 +1785,21 @@
     });
   }
   const btnPestRef = document.getElementById('btn-pest-refill');
-  if (btnPestRef) {
+  const pestLiters = document.getElementById('pest-liters');
+  if (btnPestRef && pestLiters) {
+    pestLiters.addEventListener('input', () => {
+      const valid = updateRefillPreview(pestLiters,
+        document.getElementById('pest-preview-uses'),
+        document.getElementById('pest-preview-rate'),
+        lastTanks.pesticide);
+      btnPestRef.disabled = !valid;
+    });
     btnPestRef.addEventListener('click', async () => {
+      const liters = parseFloat(pestLiters.value || '0');
+      if (liters <= 0) return;
       const body = {
         pesticide_type: document.getElementById('pest-type').value,
-        total_ml: parseFloat(document.getElementById('pest-total').value || '0'),
-        tank_capacity_ml: parseFloat(document.getElementById('pest-cap').value || '0') || null,
-        ml_per_activation: parseFloat(document.getElementById('pest-mlact').value || '250'),
+        total_liters: liters,
         soak_days: parseFloat(document.getElementById('pest-soak').value || '0'),
       };
       const res = await fetch(API + '/tanks/pesticide/refill', {
@@ -1911,7 +1995,12 @@
     }, 150);
   });
 
-  // Start
+  // Start — open the view matching the URL (deep links from other pages,
+  // e.g. /logs and /settings, must land on the right tab, not Overview).
+  const initialPath = window.location.pathname.replace(/\/+$/, '') || '/';
+  const initialView = { '/logs': 'logs', '/settings': 'settings' }[initialPath];
+  if (initialView) switchView(initialView);
+
   poll();
   setInterval(poll, POLL_MS);
 })();

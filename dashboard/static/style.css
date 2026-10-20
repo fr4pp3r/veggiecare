@@ -53,6 +53,60 @@
   max-width: 140px;
 }
 
+/* Tank fill level indicator */
+.tank-fill {
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+.tank-fill-label {
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+  min-width: 70px;
+}
+.tank-fill-track {
+  flex: 1;
+  height: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+}
+.tank-fill-bar {
+  height: 100%;
+  width: 0%;
+  background: var(--success);
+  border-radius: 6px;
+  transition: width 0.4s ease, background 0.3s ease;
+}
+.tank-fill-pct {
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+  min-width: 35px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.tank-fill-bar.fill-low { background: var(--warning); }
+.tank-fill-bar.fill-empty { background: var(--danger); }
+
+/* Dose derivation hint shown next to "Amount each use" */
+.dose-hint {
+  font-size: 0.7rem;
+  color: var(--fg-muted);
+  margin-left: 0.5rem;
+}
+
+/* Live refill preview ("That's ≈ N uses at ...") */
+.refill-preview {
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+  margin-top: 4px;
+}
+.refill-preview strong { color: var(--fg); }
+
 :root {
   --bg: #0f1216;
   --bg-card: #161b22;
@@ -1558,7 +1612,7 @@ a:hover { color: var(--accent-hover); }
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
-  padding: 0 1rem 1rem;
+  padding: 0.5rem 1rem 0.5rem;
 }
 .status-chip {
   display: inline-flex;

@@ -469,6 +469,11 @@ def _validate_tanks(section: dict, errors: list[str]) -> None:
         # reliably deliver less than one minimum pulse, so the configured target
         # must be at least that volume — otherwise a refill would be rejected,
         # or the runtime would be forced to command a sub-floor pulse.
+        #
+        # Since refills now DERIVE the dose (pump_lph x dose-relay cycle
+        # seconds), this only guards the fallback default kept in the config;
+        # a derived dose is clamped to the meterable floor at refill time and
+        # can never violate it.
         pump_lph = tank.get("pump_lph", 800)
         min_dose = tank.get("min_dose_seconds", 0)
         target_key = "fert_ml_per_cycle" if tank_name == "fertilizer" else "ml_per_activation"

@@ -161,9 +161,16 @@ SETTINGS_GROUPS: list[dict[str, Any]] = [
             {
                 "key": "npk_recommendations.crop_type",
                 "label": "Crop type",
-                "description": "The type of crop you are growing. Determines target NPK ranges for each growth stage.",
+                "description": "The crop you are growing. The recommendation model uses this to tailor fertilizer suggestions to your crop.",
                 "type": "select",
-                "options": ["tomato", "pepper", "lettuce", "cucumber"],
+                "options": [
+                    "Adzuki Beans", "Black gram", "Chickpea", "Coconut", "Coffee",
+                    "Cotton", "Ground Nut", "Jute", "Kidney Beans", "Lentil",
+                    "Moth Beans", "Mung Bean", "Peas", "Pigeon Peas", "Rubber",
+                    "Sugarcane", "Tea", "Tobacco", "apple", "banana", "grapes",
+                    "maize", "mango", "millet", "muskmelon", "orange", "papaya",
+                    "pomegranate", "rice", "watermelon", "wheat",
+                ],
             },
             {
                 "key": "npk_recommendations.growth_stage",

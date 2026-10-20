@@ -1,0 +1,11 @@
+true\predicted,Balanced NPK Fertilizer,Compost,DAP,General Purpose Fertilizer,Gypsum,Lime,Muriate of Potash,Organic Fertilizer,Urea,Water Retaining Fertilizer
+Balanced NPK Fertilizer,31,0,0,0,0,0,0,0,0,0
+Compost,2,60,0,0,0,0,0,0,0,13
+DAP,0,0,211,0,0,0,0,0,0,0
+General Purpose Fertilizer,0,0,0,6,0,0,0,0,0,0
+Gypsum,0,0,0,0,10,0,0,0,0,1
+Lime,0,0,0,0,0,33,0,0,0,3
+Muriate of Potash,0,0,0,0,0,0,65,0,0,0
+Organic Fertilizer,0,0,0,0,0,0,0,19,0,0
+Urea,0,0,0,0,0,0,0,0,31,0
+Water Retaining Fertilizer,0,0,0,0,0,0,0,0,0,135

@@ -239,6 +239,19 @@ def test_config_accepts_meterable_dose(temp_config):
     assert cfg["tanks"]["fertilizer"]["fert_ml_per_cycle"] == 250
     assert cfg["tanks"]["pesticide"]["ml_per_activation"] == 250
 
+
+def test_config_accepts_tanks_without_an_explicit_dose(temp_config):
+    """Doses are derived at refill time; an omitted dose key is not an error."""
+    _with_tanks(temp_config, {
+        "fertilizer": {"soak_days": 7, "min_dose_seconds": 1.0, "pump_lph": 800},
+        "pesticide": {"min_dose_seconds": 1.0, "pump_lph": 800},
+    })
+    cfg = load_config(temp_config)
+    assert cfg["tanks"]["fertilizer"]["soak_days"] == 7
+    # The shipped default ships in as the fallback (deep-merged), and the
+    # meterability invariant still holds for it.
+    assert cfg["tanks"]["fertilizer"]["fert_ml_per_cycle"] == 250
+
 def _set_soil_moisture_key(temp_config, key, value):
     import yaml
     with open(temp_config) as f:

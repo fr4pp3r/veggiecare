@@ -1,0 +1,31 @@
+Ultralytics 8.4.182  Python-3.14.7 torch-2.14.1+cpu CPU (Intel Core i3-10105 3.70GHz)
+YOLO11n-cls summary (fused): 47 layers, 1,537,553 parameters, 0 gradients, 3.2 GFLOPs
+WARNING Dataset 'split=val' not found, using 'split=test' instead.
+[34m[1mtrain:[0m D:\Projects\veggiecare\Pest-Data\train... found 2700 images in 9 classes  
+[34m[1mval:[0m D:\Projects\veggiecare\Pest-Data\test... found 450 images in 9 classes  
+[34m[1mtest:[0m D:\Projects\veggiecare\Pest-Data\test... found 450 images in 9 classes  
+[34m[1mval: [0mFast image access  (ping: 0.1±0.0 ms, read: 14.7±10.5 MB/s, size: 8.3 KB)
+[K[34m[1mval: [0mScanning D:\Projects\veggiecare\Pest-Data\test... 251 images, 0 corrupt: 55% ━━━━━━╸───── 251/450 725.6it/s 0.1s<0.3s[K[34m[1mval: [0mScanning D:\Projects\veggiecare\Pest-Data\test... 450 images, 0 corrupt: 100% ━━━━━━━━━━━━ 450/450 2.7Kit/s 0.2s
+[34m[1mval: [0mNew cache created: D:\Projects\veggiecare\Pest-Data\test.cache
+[K               classes   top1_acc   top5_acc: 3% ──────────── 1/29 1.0it/s 0.3s<26.8s[K               classes   top1_acc   top5_acc: 6% ╸─────────── 2/29 2.4it/s 0.5s<11.0s[K               classes   top1_acc   top5_acc: 10% ━─────────── 3/29 2.6it/s 0.8s<10.1s[K               classes   top1_acc   top5_acc: 13% ━╸────────── 4/29 3.1it/s 1.0s<8.0s[K               classes   top1_acc   top5_acc: 17% ━━────────── 5/29 5.1it/s 1.1s<4.7s[K               classes   top1_acc   top5_acc: 20% ━━────────── 6/29 5.6it/s 1.3s<4.1s[K               classes   top1_acc   top5_acc: 24% ━━╸───────── 7/29 6.2it/s 1.4s<3.6s[K               classes   top1_acc   top5_acc: 31% ━━━╸──────── 9/29 6.8it/s 1.7s<2.9s[K               classes   top1_acc   top5_acc: 34% ━━━━──────── 10/29 7.8it/s 1.8s<2.4s[K               classes   top1_acc   top5_acc: 37% ━━━━╸─────── 11/29 7.4it/s 1.9s<2.4s[K               classes   top1_acc   top5_acc: 41% ━━━━╸─────── 12/29 6.0it/s 2.3s<2.8s[K               classes   top1_acc   top5_acc: 44% ━━━━━─────── 13/29 6.7it/s 2.4s<2.4s[K               classes   top1_acc   top5_acc: 48% ━━━━━╸────── 14/29 7.1it/s 2.5s<2.1s[K               classes   top1_acc   top5_acc: 51% ━━━━━━────── 15/29 7.5it/s 2.7s<1.9s[K               classes   top1_acc   top5_acc: 55% ━━━━━━╸───── 16/29 8.2it/s 2.8s<1.6s[K               classes   top1_acc   top5_acc: 58% ━━━━━━━───── 17/29 8.1it/s 2.9s<1.5s[K               classes   top1_acc   top5_acc: 62% ━━━━━━━───── 18/29 7.6it/s 3.0s<1.5s[K               classes   top1_acc   top5_acc: 65% ━━━━━━━╸──── 19/29 8.0it/s 3.2s<1.2s[K               classes   top1_acc   top5_acc: 72% ━━━━━━━━╸─── 21/29 8.8it/s 3.3s<0.9s[K               classes   top1_acc   top5_acc: 75% ━━━━━━━━━─── 22/29 8.6it/s 3.5s<0.8s[K               classes   top1_acc   top5_acc: 82% ━━━━━━━━━╸── 24/29 9.0it/s 3.7s<0.6s[K               classes   top1_acc   top5_acc: 89% ━━━━━━━━━━╸─ 26/29 9.5it/s 3.9s<0.3s[K               classes   top1_acc   top5_acc: 93% ━━━━━━━━━━━─ 27/29 8.2it/s 4.0s<0.2s[K               classes   top1_acc   top5_acc: 96% ━━━━━━━━━━━╸ 28/29 7.6it/s 4.2s<0.1s[K               classes   top1_acc   top5_acc: 100% ━━━━━━━━━━━━ 29/29 6.8it/s 4.2s
+                   all      0.871          1
+Speed: 0.0ms preprocess, 4.3ms inference, 0.0ms loss, 0.0ms postprocess per image
+Results saved to [1mD:\Projects\veggiecare\runs\eval_v1\best_pt[0m
+
+=== PER-CLASS METRICS (from confusion matrix, rows=predicted, cols=true) ===
+      aphids: P=0.9362 R=0.8800 F1=0.9072 support=50
+    armyworm: P=0.8043 R=0.7400 F1=0.7708 support=50
+      beetle: P=0.9259 R=1.0000 F1=0.9615 support=50
+    bollworm: P=0.7460 R=0.9400 F1=0.8319 support=50
+ grasshopper: P=0.9592 R=0.9400 F1=0.9495 support=50
+       mites: P=0.8654 R=0.9000 F1=0.8824 support=50
+    mosquito: P=0.9615 R=1.0000 F1=0.9804 support=50
+      sawfly: P=0.8158 R=0.6200 F1=0.7045 support=50
+  stem_borer: P=0.8367 R=0.8200 F1=0.8283 support=50
+
+top1=0.8711 top5=1.0000
+macro_f1=0.8685 weighted_f1=0.8685 micro_precision=0.8711
+total_images=450
+
+wrote best_pt_metrics.json, best_pt_confusion.csv, stdout captured to best_pt_stdout.txt
+save_dir: D:\Projects\veggiecare\runs\eval_v1\best_pt

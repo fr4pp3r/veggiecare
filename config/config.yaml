@@ -120,7 +120,11 @@ tanks:
     tank_capacity_ml: 5000      # physical tank size (sanity check)
     pump_lph: 800               # pump flow rate
     mode: with_watering         # with_watering | separate
-    fert_ml_per_cycle: 250      # target mL per fertigation (>= min_dose_seconds worth)
+    # "Amount each use" is no longer entered on refill: it is DERIVED from
+    # pump_lph x the fertilizer relay's activation_duration_seconds, e.g.
+    # 800 L/h * 60 s = 13333 mL (~13.3 L) per use. This value is only the
+    # fallback when no matching dose relay is configured.
+    fert_ml_per_cycle: 250      # fallback mL per fertigation
     min_ml_for_cycle: 250       # block if less than this remains
     min_dose_seconds: 1.0       # physical floor: 800 L/H ≈ 222 mL per second
     soak_days: 7                # days to wait between fertilizations
@@ -134,7 +138,9 @@ tanks:
     tank_capacity_ml: 2000
     pump_lph: 800
     mode: separate              # pesticide stays independent of watering
-    ml_per_activation: 250      # volume-based dose (drives pulse length)
+    # Derived at refill from pump_lph x the pest_response relay's
+    # activation_duration_seconds; this is only the fallback.
+    ml_per_activation: 250      # fallback volume-based dose (drives pulse length)
     min_dose_seconds: 1.0       # physical floor: 800 L/H ≈ 222 mL per second
     soak_days: 0                # typically not needed for pesticide
     # NOTE: max_activations_per_month lives under pest_detection above — that

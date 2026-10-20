@@ -263,7 +263,7 @@
                 <div class="tank-summary">
                   <div class="tank-key-fact">
                     <span class="label">Amount left</span>
-                    <span class="value tank-big" id="tank-fert-rem">—</span><span class="unit" style="font-size:1rem; color:var(--fg-muted);"> mL</span>
+                    <span class="value tank-big" id="tank-fert-rem">—</span><span class="unit" style="font-size:1rem; color:var(--fg-muted);"> L</span>
                   </div>
                   <div class="tank-key-fact">
                     <span class="label">Status</span>
@@ -274,16 +274,23 @@
                     <span class="value" id="tank-fert-auto">—</span>
                   </div>
                 </div>
+                <div class="tank-fill">
+                  <span class="tank-fill-label">Fill level</span>
+                  <div class="tank-fill-track">
+                    <div class="tank-fill-bar" id="tank-fert-fill"></div>
+                  </div>
+                  <span class="tank-fill-pct" id="tank-fert-fill-pct">—</span>
+                </div>
                 <div class="advanced">
                   <summary>Tank details</summary>
                   <div class="tank-row" style="margin-top:0.5rem;"><span>Type:</span> <span id="tank-fert-type">—</span></div>
                   <div class="tank-row"><span>Nutrients (N/P/K):</span> <span id="tank-fert-npk">—</span></div>
                   <div class="tank-row"><span>How long it can keep running:</span> <span id="tank-fert-rt">—</span></div>
+                  <div class="tank-row"><span>Amount each use:</span> <span id="tank-fert-dose">—</span><span class="dose-hint" id="tank-fert-dose-hint"></span></div>
                   <div class="tank-row"><span>Last filled:</span> <span id="tank-fert-lastref">—</span></div>
                   <div class="tank-row"><span>Last used:</span> <span id="tank-fert-lastfert">—</span></div>
                   <div class="tank-row"><span>Waiting until:</span> <span id="tank-fert-cool">—</span></div>
                   <div class="tank-row"><span>Mix mode:</span> <span id="tank-fert-mode">—</span></div>
-                  <div class="tank-row"><span>Amount each use:</span> <span id="tank-fert-dose">—</span></div>
                   <div class="tank-row"><span>Blocked:</span> <span id="tank-fert-blocked" class="tank-blocked">—</span></div>
                   <div class="tank-form">
                     <details>
@@ -292,12 +299,11 @@
                       <div class="form-row"><label>N</label><input id="fert-n" type="number" step="0.1" value="0"></div>
                       <div class="form-row"><label>P</label><input id="fert-p" type="number" step="0.1" value="0"></div>
                       <div class="form-row"><label>K</label><input id="fert-k" type="number" step="0.1" value="0"></div>
-                      <div class="form-row"><label>Total mL</label><input id="fert-total" type="number" step="1" value="5000"></div>
-                      <div class="form-row"><label>Tank capacity mL</label><input id="fert-cap" type="number" step="1" value="5000"></div>
-                      <div class="form-row"><label>Amount each use</label><input id="fert-mlcycle" type="number" step="10" value="250"></div>
+                      <div class="form-row"><label>Mixture in L</label><input id="fert-liters" type="number" step="0.1" min="0" value="5"></div>
                       <div class="form-row"><label>Days to wait between uses</label><input id="fert-soak" type="number" step="1" value="7"></div>
                       <div class="form-row"><label>Mode</label><select id="fert-mode"><option value="with_watering">Mixes with watering</option><option value="separate">Separate from watering</option></select></div>
-                      <button id="btn-fert-refill" class="btn btn-secondary btn-sm" type="button">Mark refilled</button>
+                      <div class="form-row refill-preview" id="fert-refill-preview"><span>That's ≈ <strong id="fert-preview-uses">—</strong> uses at <span id="fert-preview-rate">—</span></span></div>
+                      <button id="btn-fert-refill" class="btn btn-secondary btn-sm" type="button" disabled>Mark refilled</button>
                     </details>
                   </div>
                   <div class="card-actions">
@@ -313,7 +319,7 @@
                 <div class="tank-summary">
                   <div class="tank-key-fact">
                     <span class="label">Amount left</span>
-                    <span class="value tank-big" id="tank-pest-rem">—</span><span class="unit" style="font-size:1rem; color:var(--fg-muted);"> mL</span>
+                    <span class="value tank-big" id="tank-pest-rem">—</span><span class="unit" style="font-size:1rem; color:var(--fg-muted);"> L</span>
                   </div>
                   <div class="tank-key-fact">
                     <span class="label">Status</span>
@@ -324,10 +330,18 @@
                     <span class="value" id="tank-pest-auto">—</span>
                   </div>
                 </div>
+                <div class="tank-fill">
+                  <span class="tank-fill-label">Fill level</span>
+                  <div class="tank-fill-track">
+                    <div class="tank-fill-bar" id="tank-pest-fill"></div>
+                  </div>
+                  <span class="tank-fill-pct" id="tank-pest-fill-pct">—</span>
+                </div>
                 <div class="advanced">
                   <summary>Tank details</summary>
                   <div class="tank-row" style="margin-top:0.5rem;"><span>Type:</span> <span id="tank-pest-type">—</span></div>
                   <div class="tank-row"><span>How long it can keep running:</span> <span id="tank-pest-rt">—</span></div>
+                  <div class="tank-row"><span>Amount each use:</span> <span id="tank-pest-dose">—</span><span class="dose-hint" id="tank-pest-dose-hint"></span></div>
                   <div class="tank-row"><span>Last filled:</span> <span id="tank-pest-lastref">—</span></div>
                   <div class="tank-row"><span>Last used:</span> <span id="tank-pest-lastpest">—</span></div>
                   <div class="tank-row"><span>Waiting until:</span> <span id="tank-pest-cool">—</span></div>
@@ -337,11 +351,10 @@
                     <details>
                       <summary>Mark tank refilled</summary>
                       <div class="form-row"><label>Type</label><input id="pest-type" type="text" placeholder="Neem"></div>
-                      <div class="form-row"><label>Total mL</label><input id="pest-total" type="number" step="1" value="2000"></div>
-                      <div class="form-row"><label>Tank capacity mL</label><input id="pest-cap" type="number" step="1" value="2000"></div>
-                      <div class="form-row"><label>Amount each use</label><input id="pest-mlact" type="number" step="1" value="250"></div>
+                      <div class="form-row"><label>Mixture in L</label><input id="pest-liters" type="number" step="0.1" min="0" value="2"></div>
                       <div class="form-row"><label>Days to wait between uses</label><input id="pest-soak" type="number" step="1" value="0"></div>
-                      <button id="btn-pest-refill" class="btn btn-secondary btn-sm" type="button">Mark refilled</button>
+                      <div class="form-row refill-preview" id="pest-refill-preview"><span>That's ≈ <strong id="pest-preview-uses">—</strong> uses at <span id="pest-preview-rate">—</span></span></div>
+                      <button id="btn-pest-refill" class="btn btn-secondary btn-sm" type="button" disabled>Mark refilled</button>
                     </details>
                   </div>
                   <div class="card-actions">

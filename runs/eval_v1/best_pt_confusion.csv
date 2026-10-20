@@ -1,0 +1,11 @@
+pred\true,aphids,armyworm,beetle,bollworm,grasshopper,mites,mosquito,sawfly,stem_borer,row_total
+aphids,44,0,0,0,0,0,0,3,0,47
+armyworm,0,37,0,2,1,0,0,6,0,46
+beetle,0,0,50,0,0,0,0,1,3,54
+bollworm,2,7,0,47,0,2,0,2,3,63
+grasshopper,1,0,0,0,47,0,0,1,0,49
+mites,3,1,0,0,1,45,0,1,1,52
+mosquito,0,0,0,0,0,1,50,1,0,52
+sawfly,0,2,0,0,1,2,0,31,2,38
+stem_borer,0,3,0,1,0,0,0,4,41,49
+col_total,50,50,50,50,50,50,50,50,50,450

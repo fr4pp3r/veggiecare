@@ -149,7 +149,8 @@ class SystemState:
                 "ml_remaining_est": 0.0,
                 "pump_lph": 800,
                 "mode": "with_watering",  # with_watering|separate
-                "fert_ml_per_cycle": 250,
+                "fert_ml_per_cycle": 250,  # fallback; refills DERIVE it (see dose_cycle_seconds)
+                "dose_cycle_seconds": 60.0,  # dose relay cycle seconds used at refill
                 "min_ml_for_cycle": 250,
                 "min_dose_seconds": 1.0,  # physical floor (800 L/H ≈ 222 mL/s)
                 "soak_days": 7,
@@ -171,7 +172,8 @@ class SystemState:
                 "ml_remaining_est": 0.0,
                 "pump_lph": 800,
                 "mode": "separate",
-                "ml_per_activation": 250,
+                "ml_per_activation": 250,  # fallback; refills DERIVE it (see dose_cycle_seconds)
+                "dose_cycle_seconds": 60.0,  # dose relay cycle seconds used at refill
                 "min_dose_seconds": 1.0,
                 "soak_days": 0,
                 "last_pesticided_at": None,

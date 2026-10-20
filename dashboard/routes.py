@@ -53,6 +53,8 @@ def _controller():
 # ======================================================================
 
 @bp.route("/")
+@bp.route("/logs")
+@bp.route("/settings")
 def index():
     return render_template("dashboard.html")
 
@@ -390,6 +392,13 @@ def api_tank_refill(tank_name: str):
     # Fields the form does not always send are passed as None so the
     # controller inherits the current tank value instead of resetting it to a
     # hardcoded default (see Controller._resolve).
+    #
+    # Contract: the client sends ONLY the volume in litres (total_liters).
+    # The "amount each use" (fert_ml_per_cycle / ml_per_activation) is DERIVED
+    # server-side from the pump rate and the dose relay's activation_duration_seconds;
+    # the legacy total_ml / explicit-dose keys are still honoured for
+    # compatibility. tank_capacity_ml is no longer a form input — the tank
+    # capacity grows to at least the refill amount.
     mode = str(body["mode"]).lower() if body.get("mode") else None
 
     if tank_name == "fertilizer":
@@ -398,6 +407,7 @@ def api_tank_refill(tank_name: str):
             npk_n=_fnum(body, "npk_n", 0),
             npk_p=_fnum(body, "npk_p", 0),
             npk_k=_fnum(body, "npk_k", 0),
+            total_liters=_fnum_or_none(body, "total_liters"),
             total_ml=_fnum(body, "total_ml", 0),
             tank_capacity_ml=_fnum_or_none(body, "tank_capacity_ml"),
             pump_lph=_fnum_opt(body, "pump_lph"),
@@ -409,6 +419,7 @@ def api_tank_refill(tank_name: str):
     else:
         ok, msg = ctrl.refill_pesticide_tank(
             pesticide_type=str(body.get("pesticide_type", "")).strip(),
+            total_liters=_fnum_or_none(body, "total_liters"),
             total_ml=_fnum(body, "total_ml", 0),
             tank_capacity_ml=_fnum_or_none(body, "tank_capacity_ml"),
             pump_lph=_fnum_opt(body, "pump_lph"),
@@ -416,7 +427,20 @@ def api_tank_refill(tank_name: str):
             min_dose_seconds=_fnum_opt(body, "min_dose_seconds"),
             soak_days=_fnum_opt(body, "soak_days"),
         )
-    return jsonify({"ok": ok, "message": msg}), (200 if ok else 400)
+    if not ok:
+        return jsonify({"ok": ok, "message": msg}), 400
+
+    # Echo the freshly refilled tank so callers can render "amount each use"
+    # without waiting for the next state poll.
+    snapshot = _state().snapshot()
+    tank_state = (snapshot["tanks"].get(tank_name) or {}) if ok else {}
+    dose_key = "fert_ml_per_cycle" if tank_name == "fertilizer" else "ml_per_activation"
+    fields: dict = {}
+    for key in ("ml_remaining_est", "pump_lph", dose_key, "dose_cycle_seconds",
+                "total_ml", "tank_capacity_ml"):
+        if key in tank_state:
+            fields[key] = tank_state[key]
+    return jsonify({"ok": ok, "message": msg, **fields}), 200
 
 
 @bp.route("/api/tanks/<tank_name>/auto", methods=["POST"])

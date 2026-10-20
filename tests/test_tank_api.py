@@ -91,10 +91,43 @@ def test_refill_fertilizer_returns_ok_and_updates_state(api):
 
 
 def test_refill_fertilizer_defaults_dose_when_omitted(api):
+    """Dose is DERIVED from the relay cycle (2 s) x pump (800 L/H)."""
     client, state, _ = api
     resp = client.post("/api/tanks/fertilizer/refill", json={"total_ml": 1200})
     assert resp.status_code == 200
-    assert state.snapshot()["tanks"]["fertilizer"]["fert_ml_per_cycle"] == 250
+    derived = 800.0 * 1000.0 * 2.0 / 3600.0
+    body = resp.get_json()
+    assert body["fert_ml_per_cycle"] == pytest.approx(derived, abs=0.01)
+    assert body["dose_cycle_seconds"] == pytest.approx(2.0, abs=0.001)
+    assert body["ml_remaining_est"] == pytest.approx(1200.0)
+    assert body["pump_lph"] == pytest.approx(800.0)
+    tank = state.snapshot()["tanks"]["fertilizer"]
+    assert tank["fert_ml_per_cycle"] == pytest.approx(derived, abs=0.01)
+    assert tank["dose_cycle_seconds"] == pytest.approx(2.0, abs=0.001)
+
+
+def test_refill_uses_litres_and_derives_dose(api):
+    """Form contract: total_liters in, derived dose + cycle seconds out."""
+    client, state, _ = api
+    resp = client.post("/api/tanks/fertilizer/refill", json={"total_liters": 5.0})
+    assert resp.status_code == 200
+    derived = 800.0 * 1000.0 * 2.0 / 3600.0  # ~444.4 mL
+    tank = state.snapshot()["tanks"]["fertilizer"]
+    assert tank["total_ml"] == pytest.approx(5000.0)
+    assert tank["ml_remaining_est"] == pytest.approx(5000.0)
+    assert tank["fert_ml_per_cycle"] == pytest.approx(derived, abs=0.01)
+    assert tank["dose_cycle_seconds"] == pytest.approx(2.0, abs=0.001)
+
+
+def test_refill_capacity_bumps_to_refill_amount(api):
+    """Refilling more than the declared capacity raises the capacity."""
+    client, state, _ = api
+    resp = client.post("/api/tanks/fertilizer/refill", json={"total_liters": 10.0})
+    assert resp.status_code == 200
+    tank = state.snapshot()["tanks"]["fertilizer"]
+    assert tank["total_ml"] == pytest.approx(10000.0)
+    assert tank["tank_capacity_ml"] == pytest.approx(10000.0)
+    assert resp.get_json()["tank_capacity_ml"] == pytest.approx(10000.0)
 
 
 def test_refill_rejects_unmeterable_dose_with_400(api):
@@ -109,7 +142,11 @@ def test_refill_rejects_unmeterable_dose_with_400(api):
 
 
 def test_refill_patches_unspecified_fields(api):
-    """A refill must not silently reset settings the operator never sent."""
+    """A refill must not silently reset settings the operator never sent.
+
+    The dose itself is now re-derived each refill (pump_lph x relay cycle),
+    so it IS allowed to change; soak window, floor and pump rate are inherited.
+    """
     client, state, _ = api
     client.post("/api/tanks/fertilizer/refill", json={
         "total_ml": 1500,
@@ -122,11 +159,19 @@ def test_refill_patches_unspecified_fields(api):
     # rather than reset to the route defaults.
     client.post("/api/tanks/fertilizer/refill", json={"total_ml": 2000})
     tank = state.snapshot()["tanks"]["fertilizer"]
-    assert tank["fert_ml_per_cycle"] == 400
+    # Derived dose: 400 L/h x 2 s (relay cycle) = ~222.2 mL
+    assert tank["fert_ml_per_cycle"] == pytest.approx(400.0 * 1000.0 * 2.0 / 3600.0, abs=0.01)
     assert tank["soak_days"] == 3
     assert tank["min_dose_seconds"] == 2.0
     assert tank["pump_lph"] == 400
     assert tank["ml_remaining_est"] == 2000
+
+
+def test_refill_rejects_liters_that_are_not_numbers(api):
+    client, _, _ = api
+    resp = client.post("/api/tanks/fertilizer/refill", json={"total_liters": "five"})
+    assert resp.status_code == 400
+    assert resp.get_json()["ok"] is False
 
 
 def test_refill_rejects_zero_amount(api):

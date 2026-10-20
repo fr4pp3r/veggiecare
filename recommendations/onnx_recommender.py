@@ -40,7 +40,7 @@ class ONNXRecommender(NPKRecommender):
         self._fert_encoder = joblib.load(project_root / "models" / "fert_encoder.joblib")
 
         self._default_soil = "Loamy Soil"
-        self._default_crop = "tomato"
+        self._default_crop = rec_cfg.get("crop_type", "tomato")
 
     def recommend(self, npk_values: dict[str, float]) -> RecommendationResult:
         if not self._enabled:

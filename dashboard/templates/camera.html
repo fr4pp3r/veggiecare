@@ -12,8 +12,76 @@
     <div class="header-meta">
       <span>Camera</span>
       <a class="btn btn-ghost btn-sm" href="/">&larr; Dashboard</a>
+      <button class="hamburger-btn" id="hamburger-btn" aria-label="Open menu" aria-expanded="false">
+        <svg viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M2 4h16v2H2V4zm0 5h16v2H2V9zm0 5h16v2H2v-2z"/></svg>
+      </button>
     </div>
   </header>
+
+  <nav class="nav-tabs" aria-label="Views">
+    <a class="nav-tab nav-tab-link" href="/">Dashboard</a>
+    <a class="nav-tab nav-tab-link" href="/logs">Logs</a>
+    <a class="nav-tab nav-tab-link" href="/settings">Settings</a>
+    <a class="nav-tab nav-tab-link active" href="/camera">Camera</a>
+    <a class="nav-tab nav-tab-link" href="/database">Database</a>
+  </nav>
+
+  <!-- Mobile Navigation Drawer -->
+  <div class="mobile-nav-overlay" id="mobile-nav-overlay"></div>
+  <nav class="mobile-nav-drawer" id="mobile-nav-drawer" aria-label="Mobile navigation">
+    <div class="drawer-header">
+      <h2>Menu</h2>
+      <button class="drawer-close" id="drawer-close" aria-label="Close menu">&times;</button>
+    </div>
+    <div class="mobile-nav-items">
+      <a href="/" class="mobile-nav-item">
+        <svg viewBox="0 0 20 20"><path d="M3 3h6v6H3V3zm8 0h6v6h-6V3zM3 11h6v6H3v-6zm8 0h6v6h-6v-6z"/></svg>
+        Dashboard
+      </a>
+      <a href="/logs" class="mobile-nav-item">
+        <svg viewBox="0 0 20 20"><path d="M4 2h12v2H4V2zm0 4h12v2H4V6zm0 4h12v2H4v-2zm0 4h8v2H4v-2z"/></svg>
+        Logs
+      </a>
+      <a href="/settings" class="mobile-nav-item">
+        <svg viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm0 2a6 6 0 110 12 6 6 0 010-12zm0 2a4 4 0 100 8 4 4 0 000-8z"/></svg>
+        Settings
+      </a>
+      <a href="/camera" class="mobile-nav-item active">
+        <svg viewBox="0 0 20 20"><path d="M7 2h6l2 2h4v12H1V4h4l2-2H7z"/></svg>
+        Camera
+      </a>
+      <a href="/database" class="mobile-nav-item">
+        <svg viewBox="0 0 20 20"><path d="M3 2h14v2H3V2zm0 4h14v12H3V6zm2 2v8h10V8H5z"/></svg>
+        Database
+      </a>
+    </div>
+  </nav>
+
+  <!-- Mobile Bottom Navigation -->
+  <nav class="bottom-nav" aria-label="Quick navigation">
+    <div class="bottom-nav-items">
+      <a href="/" class="bottom-nav-item">
+        <svg viewBox="0 0 20 20"><path d="M3 3h6v6H3V3zm8 0h6v6h-6V3zM3 11h6v6H3v-6zm8 0h6v6h-6v-6z"/></svg>
+        Home
+      </a>
+      <a href="/logs" class="bottom-nav-item">
+        <svg viewBox="0 0 20 20"><path d="M4 2h12v2H4V2zm0 4h12v2H4V6zm0 4h12v2H4v-2zm0 4h8v2H4v-2z"/></svg>
+        Logs
+      </a>
+      <a href="/settings" class="bottom-nav-item">
+        <svg viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm0 2a6 6 0 110 12 6 6 0 010-12zm0 2a4 4 0 100 8 4 4 0 000-8z"/></svg>
+        Settings
+      </a>
+      <a href="/camera" class="bottom-nav-item active">
+        <svg viewBox="0 0 20 20"><path d="M7 2h6l2 2h4v12H1V4h4l2-2H7z"/></svg>
+        Camera
+      </a>
+      <a href="/database" class="bottom-nav-item">
+        <svg viewBox="0 0 20 20"><path d="M3 2h14v2H3V2zm0 4h14v12H3V6zm2 2v8h10V8H5z"/></svg>
+        Data
+      </a>
+    </div>
+  </nav>
 
   <main class="container">
     <section class="card camera-stage-card">
@@ -76,5 +144,47 @@
   </main>
 
   <script src="/static/camera.js"></script>
+  <script>
+    /* Mobile navigation for the Camera page.
+     *
+     * This page does NOT load /static/app.js (camera.js handles this page
+     * only): app.js starts a 5s state poll (fetching /api/state) and writes to
+     * dashboard-only elements (uptime, NPK cards, alerts, etc.), which would
+     * throw on this standalone page. Instead this small script wires the
+     * hamburger, drawer, and overlay with the same IDs and classes as the main
+     * dashboard. */
+    (() => {
+      const hamburgerBtn = document.getElementById('hamburger-btn');
+      const mobileNavDrawer = document.getElementById('mobile-nav-drawer');
+      const mobileNavOverlay = document.getElementById('mobile-nav-overlay');
+      const drawerClose = document.getElementById('drawer-close');
+
+      if (!hamburgerBtn || !mobileNavDrawer || !mobileNavOverlay || !drawerClose) return;
+
+      function openMobileNav() {
+        mobileNavDrawer.classList.add('open');
+        mobileNavOverlay.classList.add('open');
+        hamburgerBtn.setAttribute('aria-expanded', 'true');
+        document.body.style.overflow = 'hidden';
+      }
+
+      function closeMobileNav() {
+        mobileNavDrawer.classList.remove('open');
+        mobileNavOverlay.classList.remove('open');
+        hamburgerBtn.setAttribute('aria-expanded', 'false');
+        document.body.style.overflow = '';
+      }
+
+      hamburgerBtn.addEventListener('click', openMobileNav);
+      drawerClose.addEventListener('click', closeMobileNav);
+      mobileNavOverlay.addEventListener('click', closeMobileNav);
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && mobileNavDrawer.classList.contains('open')) {
+          closeMobileNav();
+        }
+      });
+    })();
+  </script>
 </body>
 </html>
