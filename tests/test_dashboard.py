@@ -58,6 +58,8 @@ def test_app(tmp_path):
     class MockController:
         def __init__(self):
             self._relays = MockRelays()
+            self.scan_calls = []
+            self.scan_result = (True, "Pest scan requested.")
 
         def activate_relay(self, relay_id, duration=None, trigger="manual", source="dashboard"):
             return True, f"Relay {relay_id} activated"
@@ -77,7 +79,8 @@ def test_app(tmp_path):
             return DetectionResult(detected=detected, pest_class=pest_class, confidence=confidence, model="mock")
 
         def request_pest_scan(self, with_stepper=False):
-            return True, "Pest scan requested."
+            self.scan_calls.append(with_stepper)
+            return self.scan_result
 
     class MockRelays:
         def deactivate(self, relay_id):
@@ -138,6 +141,16 @@ def test_api_state_endpoint(test_app):
     assert "thresholds" in data
 
 
+def test_api_state_keeps_pest_enabled_when_detector_unavailable(test_app):
+    test_app.veggiecare_state.update_pest(enabled=True, configured=False, model=None, error=None)
+    client = test_app.test_client()
+    resp = client.get("/api/state")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["pest"]["enabled"] is True
+    assert data["pest"]["configured"] is False
+
+
 def test_api_relay_activate(test_app):
     client = test_app.test_client()
     resp = client.post("/api/relays/1/activate", json={"duration": 10})
@@ -187,6 +200,27 @@ def test_api_pest_scan(test_app):
     data = resp.get_json()
     assert data["ok"] is True
     assert "message" in data
+
+
+def test_api_pest_scan_passes_mode_to_controller(test_app):
+    ctrl = test_app.veggiecare_controller
+    client = test_app.test_client()
+    camera = client.post("/api/pest/scan", json={"mode": "camera"})
+    stepper = client.post("/api/pest/scan", json={"mode": "stepper"})
+    assert camera.status_code == 200
+    assert stepper.status_code == 200
+    assert ctrl.scan_calls == [False, True]
+
+
+def test_api_pest_scan_returns_controller_failure_message(test_app):
+    ctrl = test_app.veggiecare_controller
+    ctrl.scan_result = (False, "No pest detector is loaded.")
+    client = test_app.test_client()
+    resp = client.post("/api/pest/scan", json={"mode": "camera"})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["ok"] is False
+    assert data["message"] == "No pest detector is loaded."
 
 
 def test_api_detections_empty_without_db(test_app):
