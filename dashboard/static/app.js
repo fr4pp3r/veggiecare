@@ -363,8 +363,10 @@
 
     // Pests chip
     const pest = data.pest;
-    if (!pest.enabled || !pest.configured) {
+    if (!pest?.enabled) {
       setChip(els.chipPestsValue, els.chipPestsDot, 'Pest watch off', 'unknown');
+    } else if (!pest.configured) {
+      setChip(els.chipPestsValue, els.chipPestsDot, 'Pest watch on (detector unavailable)', 'warn');
     } else if (pest.detected) {
       setChip(els.chipPestsValue, els.chipPestsDot, `Pest found: ${pest.pest_class || 'unknown'}`, 'bad');
     } else if (pest.status === 'possible') {
@@ -629,15 +631,28 @@
   function renderPest(pest, pestThreshold) {
     const thresholdPct = pestThreshold != null ? Math.round(pestThreshold * 100) : 70;
 
-    if (!pest || !pest.enabled || !pest.configured) {
-      els.pestStatus.textContent = pest && pest.enabled
-        ? 'Pest watch is on, but no detector model is loaded.'
-        : 'Pest watch is turned off.';
+    if (!pest || !pest.enabled) {
+      els.pestStatus.textContent = 'Pest watch is turned off.';
       els.pestStatus.className = 'pest-status';
       els.pestStatus.style.display = 'block';
       els.pestDetails.classList.add('hidden');
       els.pestScanActions.classList.add('hidden');
       els.pestSimControls.style.display = 'none';
+      renderPestTreatment(null);
+      return;
+    }
+
+    if (!pest.configured) {
+      els.pestStatus.textContent = 'Pest watch is on, but no detector model is loaded.';
+      els.pestStatus.className = 'pest-status pest-outcome--error';
+      els.pestStatus.style.display = 'block';
+      els.pestDetails.classList.remove('hidden');
+      els.pestDetails.innerHTML = [
+        { label: 'Model', value: pest.model != null ? String(pest.model) : '—' },
+        { label: 'Status', value: pest.error ? String(pest.error) : 'Model unavailable' },
+      ].map(r => `<div class="pest-detail-row"><span class="label">${escapeHtml(r.label)}</span><span class="value">${escapeHtml(r.value)}</span></div>`).join('');
+      els.pestScanActions.classList.remove('hidden');
+      els.pestSimControls.style.display = 'flex';
       renderPestTreatment(null);
       return;
     }
@@ -839,6 +854,10 @@
       els.sysPest.appendChild(statusDot(!pest.error));
       els.sysPest.append(' ');
       els.sysPest.appendChild(stateSpan(pest.error ? `Error: ${pest.error}` : `Loaded (${pest.model})`, !pest.error ? 'good' : 'bad'));
+    } else if (pest.enabled) {
+      els.sysPest.appendChild(statusDot(false));
+      els.sysPest.append(' ');
+      els.sysPest.appendChild(stateSpan('Enabled (detector unavailable)', 'warn'));
     } else {
       els.sysPest.appendChild(statusDot(false));
       els.sysPest.append(' ');
