@@ -546,6 +546,26 @@ def test_sweep_geometry_uses_config(tmp_path):
         db.close()
 
 
+def test_sweep_geometry_max_sweep_steps_override(tmp_path):
+    """stepper.max_sweep_steps, when set, replaces the geometry-derived count."""
+    cfg = _sweep_config(tmp_path)
+    cfg["stepper"].update(
+        {"delay": 0.004, "extension_distance_in": 36.0, "steps_per_rev": 2048,
+         "max_sweep_steps": 3300}
+    )
+    ctrl, state, relays, db = _sweep_controller(
+        cfg, _FakeStepper(), _CountingDetector(), _FakeCamera()
+    )
+    try:
+        total_steps, delay = ctrl._sweep_geometry()
+        assert total_steps == 3300
+        assert delay == 0.004
+    finally:
+        ctrl.stop()
+        relays.shutdown()
+        db.close()
+
+
 def test_sweep_skips_absurd_geometry(tmp_path):
     """A geometry that would command a runaway motion is refused, not executed."""
     cfg = _sweep_config(

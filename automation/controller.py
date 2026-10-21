@@ -1004,6 +1004,13 @@ class AutomationController:
         steps_per_rev = int(_clamp(float(stepper_cfg.get("steps_per_rev", 2048)), 200, 8000))
         delay = _clamp(float(stepper_cfg.get("delay", 0.003)), 0.0005, 0.05)
 
+        # Explicit override: `stepper.max_sweep_steps` sets the one-way step
+        # count directly, bypassing the geometry derivation. The _MAX_SWEEP_STEPS
+        # guard in _run_sweep() still applies to this value.
+        override = stepper_cfg.get("max_sweep_steps")
+        if override is not None:
+            return int(override), delay
+
         revolutions = dist / (math.pi * wheel)
         total_steps = int(round(revolutions * steps_per_rev))
         return total_steps, delay

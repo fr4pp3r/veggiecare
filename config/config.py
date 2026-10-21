@@ -400,6 +400,8 @@ def _validate_stepper(section: dict, errors: list[str]) -> None:
         _number(section, "extension_distance_in", errors, path, minimum=0.1)
     if "steps_per_rev" in section:
         _int(section, "steps_per_rev", errors, path, minimum=1)
+    if "max_sweep_steps" in section:
+        _int(section, "max_sweep_steps", errors, path, minimum=1)
 
 
 def _validate_camera(section: dict, errors: list[str]) -> None:

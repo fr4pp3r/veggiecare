@@ -671,3 +671,6 @@ stepper:
   wheel_diameter_in: 2.125
   extension_distance_in: 36.0
   steps_per_rev: 2048
+  # Optional hard override of the derived count above: the camera sweep runs
+  # exactly this many one-way steps when set (geometry is ignored for distance).
+  max_sweep_steps: 3300

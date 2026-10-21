@@ -140,8 +140,8 @@ SETTINGS_GROUPS: list[dict[str, Any]] = [
             },
             {
                 "key": "stepper.max_sweep_steps",
-                "label": "Max sweep steps (3 ft extension)",
-                "description": "Computed step count for a full 3 ft camera sweep. 512 steps = 90° for both the stepper and the 2-1/8\" wheel. Not directly editable.",
+                "label": "Max sweep steps",
+                "description": "One-way step count for the camera pest sweep. Set via config.yaml (stepper.max_sweep_steps); when set it overrides the count derived from the wheel diameter and bed length. Not directly editable.",
                 "type": "text",
                 "readonly": True,
             },
@@ -327,14 +327,19 @@ def get_config_payload(cfg: dict) -> dict[str, Any]:
             entry = dict(field)
             key = field["key"]
             if key == "stepper.max_sweep_steps":
-                # Computed: steps for 3 ft extension at current geometry.
+                # Show the explicit override if set; otherwise fall back to
+                # the geometry-derived count (wheel, bed length, steps/rev).
                 stepper_cfg = cfg.get("stepper", {})
-                wheel = float(stepper_cfg.get("wheel_diameter_in", 2.125))
-                dist = float(stepper_cfg.get("extension_distance_in", 36.0))
-                steps_per_rev = int(stepper_cfg.get("steps_per_rev", 2048))
-                import math
-                revs = dist / (math.pi * wheel)
-                entry["value"] = int(round(revs * steps_per_rev))
+                override = stepper_cfg.get("max_sweep_steps")
+                if override is not None:
+                    entry["value"] = int(override)
+                else:
+                    wheel = float(stepper_cfg.get("wheel_diameter_in", 2.125))
+                    dist = float(stepper_cfg.get("extension_distance_in", 36.0))
+                    steps_per_rev = int(stepper_cfg.get("steps_per_rev", 2048))
+                    import math
+                    revs = dist / (math.pi * wheel)
+                    entry["value"] = int(round(revs * steps_per_rev))
             else:
                 entry["value"] = read_path(cfg, key)
             out["fields"].append(entry)
