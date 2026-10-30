@@ -264,6 +264,13 @@ def api_state():
         "moisture": moisture_threshold,
         "pest": float(_config().get("pest_detection", {}).get("confidence_threshold", 0.70)),
     }
+    # Add garden info
+    garden_cfg = _config().get("garden", {})
+    snapshot["garden"] = {
+        "area_sq_m": float(garden_cfg.get("area_sq_m", 10.0)),
+        "water_target_mm_per_day": float(garden_cfg.get("water_target_mm_per_day", 5.0)),
+        "use_area_based_budget": bool(_config().get("soil_moisture", {}).get("use_area_based_budget", False)),
+    }
     # Relay item metadata (labels, durations).
     relay_items = {int(r["id"]): r for r in _config().get("relays", {}).get("items", [])}
     for relay in snapshot.get("relays", []):
@@ -513,6 +520,28 @@ def api_pest_scan():
     with_stepper = body.get("mode") == "stepper"
     ok, message = ctrl.request_pest_scan(with_stepper)
     return jsonify({"ok": ok, "message": message})
+
+
+@bp.route("/api/npk/read", methods=["POST"])
+def api_npk_read():
+    """Force an immediate NPK sensor read."""
+    ctrl = _controller()
+    if ctrl is None:
+        return jsonify({"ok": False, "error": "Controller not ready"}), 503
+    if ctrl._npk_sensor is None:
+        return jsonify({"ok": False, "error": "NPK sensor not initialized"}), 503
+
+    npk_cfg = ctrl._cfg.get("npk", {})
+    if not npk_cfg.get("enabled"):
+        return jsonify({"ok": False, "error": "NPK sensor is disabled in config"}), 400
+
+    try:
+        # Call the internal read method directly
+        now = time.monotonic()
+        ctrl._read_npk(now, npk_cfg)
+        return jsonify({"ok": True, "message": "NPK reading completed"})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": f"NPK read failed: {exc}"}), 500
 
 
 @bp.route("/api/watering/reset", methods=["POST"])

@@ -93,6 +93,13 @@ class AutomationController:
         self._last_moisture_read = 0.0
         self._last_pest_cycle = 0.0
 
+        # NPK sensor availability tracking: when a read fails, retry sooner
+        self._npk_sensor_available = True
+        self._npk_retry_interval = 30.0  # seconds between retries after failure
+        self._npk_last_failed_read = 0.0
+        self._npk_connected = False
+        self._npk_connected = False
+
         # Pest work runs on a dedicated worker thread: a stepper sweep blocks
         # for minutes and must not stall the sensor tick. _pest_active is
         # reserved at enqueue time and cleared once the queue drains.
@@ -173,6 +180,15 @@ class AutomationController:
         self._thread.start()
         self._state.set_automation(running=True)
         logger.info("Automation controller started")
+        # Force an immediate NPK read on startup so the sensor is read
+        # without waiting for the configured interval.
+        if self._npk_sensor is not None:
+            npk_cfg = self._cfg.get("npk", {})
+            if npk_cfg.get("enabled"):
+                try:
+                    self._read_npk(time.monotonic(), npk_cfg)
+                except Exception:
+                    logger.exception("Initial NPK read failed")
 
     def stop(self) -> None:
         self._stop.set()
@@ -227,8 +243,14 @@ class AutomationController:
         npk_cfg = self._cfg.get("npk", {})
         if npk_cfg.get("enabled") and self._npk_sensor is not None:
             interval = float(npk_cfg.get("read_interval_seconds", 300))
-            if now - self._last_npk_read >= interval:
-                self._read_npk(now, npk_cfg)
+            # If the sensor was previously unavailable, retry more frequently
+            if not self._npk_sensor_available:
+                retry_interval = self._npk_retry_interval
+                if now - self._npk_last_failed_read >= retry_interval:
+                    self._read_npk(now, npk_cfg)
+            else:
+                if now - self._last_npk_read >= interval:
+                    self._read_npk(now, npk_cfg)
 
         # 2. Soil moisture sensor + watering rule
         moist_cfg = self._cfg.get("soil_moisture", {})
@@ -263,7 +285,13 @@ class AutomationController:
             self._state.update_npk(
                 values={}, below={}, timestamp=ts, error=str(exc),
             )
+            self._npk_connected = False
             self._log_event("WARNING", "npk", str(exc))
+            # Mark sensor as unavailable; next tick will retry sooner.
+            if self._npk_sensor_available:
+                self._npk_sensor_available = False
+                logger.warning("NPK sensor unavailable: %s", exc)
+            self._npk_last_failed_read = now
             return
 
         values = reading.values
@@ -276,6 +304,14 @@ class AutomationController:
         ts = reading.timestamp.isoformat(timespec="seconds")
         self._state.update_npk(values=values, below=below, timestamp=ts)
         self._last_npk_read = now
+
+        # Sensor came back online after being unavailable.
+        if not self._npk_sensor_available:
+            self._npk_sensor_available = True
+            self._npk_connected = True
+            logger.info("NPK sensor is now available")
+        else:
+            self._npk_connected = True
 
         # Database log — governed by its own (slower) interval.
         log_interval = float(cfg.get("log_interval_seconds", 900))
@@ -466,7 +502,7 @@ class AutomationController:
             self._watering_budget_used = self._watering_seconds_today(now)
             self._last_watering_budget_read = now
 
-        budget_max = float(cfg.get("max_watering_seconds_per_day", 1800))
+        budget_max = self._daily_watering_budget(cfg)
         blocked = (self._watering_budget_used + duration) > budget_max
 
         current = self._state.watering
@@ -533,7 +569,8 @@ class AutomationController:
         else:
             duration = float(cfg.get("relay_activation_duration_seconds", 300))
         used_today = self._watering_budget_used
-        budget_max = float(cfg.get("max_watering_seconds_per_day", 1800))
+        budget_max = self._daily_watering_budget(cfg)
+
         if used_today + duration > budget_max:
             today_str = datetime.now().date().isoformat()
             if self._watering_blocked_alert_day != today_str:
@@ -776,6 +813,33 @@ class AutomationController:
             logger.error("DB query failed (watering seconds today): %s", exc)
             return 0.0
 
+    def _daily_watering_budget(self, cfg: dict) -> float:
+        """Daily watering ceiling in seconds.
+
+        With ``use_area_based_budget`` the budget is derived from the garden:
+        area (m²) × target depth (mm) = litres/day, converted to pump seconds
+        at 800 L/H. It can only INCREASE (or match) the configured
+        ``max_watering_seconds_per_day`` — never reduce it below that floor.
+        """
+        hardcoded_max = float(cfg.get("max_watering_seconds_per_day", 1800))
+        if not cfg.get("use_area_based_budget", False):
+            return hardcoded_max
+        garden = self._cfg.get("garden", {})
+        area_sq_m = float(garden.get("area_sq_m", 10.0))
+        target_mm = float(garden.get("water_target_mm_per_day", 5.0))
+        # shortcut: fixed 800 L/H pump rate; make it config-driven if a second
+        # pump speed is ever supported.
+        pump_lph = 800.0
+        liters_per_day = area_sq_m * target_mm  # m² × mm == litres
+        area_budget = (liters_per_day / pump_lph) * 3600.0
+        budget_max = max(area_budget, hardcoded_max)
+        logger.info(
+            "Area-based watering budget active: %.0f m² × %.1f mm/day = "
+            "%.1f L/day -> %.0f s (floor %ds)",
+            area_sq_m, target_mm, liters_per_day, area_budget, int(hardcoded_max),
+        )
+        return budget_max
+
     def _seed_tank_state(self) -> None:
         """Rebuild tank stock/cooldown from the DB so a restart cannot bypass them.
 
@@ -884,7 +948,7 @@ class AutomationController:
                             self._state.update_watering(
                                 cooldown_remaining_seconds=remaining,
                             )
-            budget_max = float(moist_cfg.get("max_watering_seconds_per_day", 1800))
+            budget_max = self._daily_watering_budget(moist_cfg)
             used_today = self._watering_seconds_today(time.monotonic())
             self._watering_budget_used = used_today
             self._last_watering_budget_read = time.monotonic()

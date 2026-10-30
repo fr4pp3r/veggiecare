@@ -39,6 +39,9 @@
     btnR1: n('btn-relay1'),
     r1Dur: n('r1-dur'),
     npkMeta: n('npk-meta'),
+    npkConnectionDot: n('npk-connection-dot'),
+    npkConnectionText: n('npk-connection-text'),
+    btnNpkReadNow: n('btn-npk-read-now'),
     // Recommendation
     recStatus: n('rec-status'),
     recPriority: n('rec-priority'),
@@ -57,6 +60,14 @@
     moistStatus: n('moist-status'),
     moistState: n('moist-state'),
     moistMeta: n('moist-meta'),
+    // Garden area awareness
+    gardenArea: n('garden-area'),
+    gardenAreaState: n('garden-area-state'),
+    gardenTarget: n('garden-target'),
+    gardenTargetTh: n('garden-target-th'),
+    gardenBudgetMode: n('garden-budget-mode'),
+    gardenBudgetState: n('garden-budget-state'),
+    gardenMeta: n('garden-meta'),
     // Watering closed-loop (fault banner + daily budget + cooldown)
     wateringFault: n('watering-fault'),
     wateringFaultReason: n('watering-fault-reason'),
@@ -187,6 +198,27 @@
     }
   }
 
+  // NPK connection status rendering
+  function renderNpkConnection(npk) {
+    const dot = els.npkConnectionDot;
+    const text = els.npkConnectionText;
+    if (!dot || !text) return;
+
+    if (npk.connected === true) {
+      dot.className = 'connection-dot connected';
+      text.textContent = 'NPK sensor connected';
+      text.className = 'connection-text connected';
+    } else if (npk.available === false) {
+      dot.className = 'connection-dot error';
+      text.textContent = 'NPK sensor error: ' + (npk.error || 'unknown');
+      text.className = 'connection-text error';
+    } else {
+      dot.className = 'connection-dot unknown';
+      text.textContent = 'NPK sensor not detected';
+      text.className = 'connection-text unknown';
+    }
+  }
+
   // API
   async function fetchJson(url, options = {}) {
     const res = await fetch(url, { headers: { 'Accept': 'application/json' }, ...options });
@@ -267,6 +299,9 @@
     }
     els.npkMeta.textContent = `Last reading: ${fmtTime(npk.timestamp)}`;
 
+    // NPK connection status
+    renderNpkConnection(npk);
+
     // Moisture
     const moist = data.sensors.moisture;
     if (moist.value !== null && moist.value !== undefined) {
@@ -304,6 +339,9 @@
 
     // Watering closed-loop (fault + daily budget + settle cooldown)
     renderWatering(data.watering);
+
+    // Garden area awareness
+    renderGarden(data);
 
     els.moistMeta.textContent = `Last reading: ${fmtTime(moist.timestamp)}`;
 
@@ -784,6 +822,37 @@
       els.wateringCooldown.classList.remove('hidden');
     } else {
       els.wateringCooldown.classList.add('hidden');
+    }
+  }
+
+  function renderGarden(data) {
+    const garden = data.garden;
+    if (!garden) return;
+    const area = garden.area_sq_m;
+    const target = garden.water_target_mm_per_day;
+    const useArea = data.use_area_based_budget;
+
+    if (els.gardenArea) els.gardenArea.textContent = area.toFixed(1);
+    if (els.gardenAreaState) {
+      els.gardenAreaState.textContent = area > 0 ? 'Monitored' : 'Not set';
+      els.gardenAreaState.className = 'state ' + (area > 0 ? 'state-good' : 'state-unknown');
+    }
+    if (els.gardenTarget) els.gardenTarget.textContent = target.toFixed(1);
+    if (els.gardenTargetTh) els.gardenTargetTh.textContent = `Target depth per day`;
+    if (els.gardenBudgetMode) {
+      els.gardenBudgetMode.textContent = useArea ? 'Area-aware' : 'Fixed';
+      els.gardenBudgetMode.className = 'value ' + (useArea ? 'state-good' : 'state-unknown');
+    }
+    if (els.gardenBudgetState) {
+      els.gardenBudgetState.textContent = useArea
+        ? 'Budget scales with garden area'
+        : 'Using fixed daily budget';
+      els.gardenBudgetState.className = 'state ' + (useArea ? 'state-good' : 'state-unknown');
+    }
+    if (els.gardenMeta) {
+      els.gardenMeta.textContent = useArea
+        ? `Area-based budget active (${area.toFixed(1)} m² × ${target.toFixed(1)} mm/day)`
+        : 'Area-based budget is off — using fixed daily cap';
     }
   }
 
@@ -1600,6 +1669,21 @@
     }
   }
 
+  async function forceNpkRead() {
+    const btn = els.btnNpkReadNow;
+    if (btn) btn.disabled = true;
+    try {
+      const res = await postJson(`${API}/npk/read`);
+      addAlert(res.ok ? 'info' : 'error', 'Dashboard',
+        res.message || (res.ok ? 'NPK reading started.' : 'Could not start NPK reading.'));
+      if (res.ok) poll(); // refresh the NPK card promptly
+    } catch (e) {
+      addAlert('error', 'Dashboard', e.message);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
   async function simulatePest() {
     try {
       const res = await postJson(`${API}/pest/simulate`, {
@@ -1726,6 +1810,7 @@
   els.btnResume.addEventListener('click', resumeAutomation);
   els.btnSimPest.addEventListener('click', simulatePest);
   els.btnWateringReset?.addEventListener('click', resetWateringFault);
+  els.btnNpkReadNow?.addEventListener('click', forceNpkRead);
 
   // Live refill preview: "That's ≈ N uses at X L/h × Y s cycle"
   function updateRefillPreview(litersInput, previewUsesEl, previewRateEl, tank) {

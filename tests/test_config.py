@@ -320,6 +320,69 @@ def test_soil_moisture_validates_without_new_closed_loop_keys(temp_config):
 
 
 # ----------------------------------------------------------------------
+# garden: area-based watering budget
+# ----------------------------------------------------------------------
+
+def test_garden_section_valid(temp_config):
+    import yaml
+    with open(temp_config) as f:
+        data = yaml.safe_load(f)
+    data["garden"] = {"area_sq_m": 15.5, "water_target_mm_per_day": 6.0}
+    with open(temp_config, "w") as f:
+        yaml.safe_dump(data, f)
+    cfg = load_config(temp_config)
+    assert cfg["garden"]["area_sq_m"] == 15.5
+    assert cfg["garden"]["water_target_mm_per_day"] == 6.0
+
+
+def test_garden_rejects_zero_area(temp_config):
+    import yaml
+    with open(temp_config) as f:
+        data = yaml.safe_load(f)
+    data["garden"] = {"area_sq_m": 0, "water_target_mm_per_day": 5.0}
+    with open(temp_config, "w") as f:
+        yaml.safe_dump(data, f)
+    with pytest.raises(ConfigError) as exc:
+        load_config(temp_config)
+    assert "area_sq_m" in str(exc.value)
+
+
+def test_garden_rejects_zero_target(temp_config):
+    import yaml
+    with open(temp_config) as f:
+        data = yaml.safe_load(f)
+    data["garden"] = {"area_sq_m": 10.0, "water_target_mm_per_day": 0}
+    with open(temp_config, "w") as f:
+        yaml.safe_dump(data, f)
+    with pytest.raises(ConfigError) as exc:
+        load_config(temp_config)
+    assert "water_target_mm_per_day" in str(exc.value)
+
+
+def test_soil_moisture_use_area_based_budget_boolean(temp_config):
+    import yaml
+    with open(temp_config) as f:
+        data = yaml.safe_load(f)
+    data["soil_moisture"]["use_area_based_budget"] = True
+    with open(temp_config, "w") as f:
+        yaml.safe_dump(data, f)
+    cfg = load_config(temp_config)
+    assert cfg["soil_moisture"]["use_area_based_budget"] is True
+
+
+def test_soil_moisture_use_area_based_budget_rejects_non_bool(temp_config):
+    import yaml
+    with open(temp_config) as f:
+        data = yaml.safe_load(f)
+    data["soil_moisture"]["use_area_based_budget"] = "yes"
+    with open(temp_config, "w") as f:
+        yaml.safe_dump(data, f)
+    with pytest.raises(ConfigError) as exc:
+        load_config(temp_config)
+    assert "use_area_based_budget" in str(exc.value)
+
+
+# ----------------------------------------------------------------------
 # pest_detection: confidence band + ROI scanning keys
 # ----------------------------------------------------------------------
 

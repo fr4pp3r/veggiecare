@@ -88,9 +88,26 @@ soil_moisture:
                                        # response before the system declares a fault.
   max_watering_seconds_per_day: 1800    # hard ceiling on cumulative watering seconds per
                                        # calendar day (1800 = 30 min/day).
+  # When enabled, the daily watering budget is derived from the garden area
+  # and target water depth instead of the hardcoded max_watering_seconds_per_day.
+  # Set `use_area_based_budget: true` to enable area-aware watering.
+  use_area_based_budget: false
   # Value returned when system.simulate_hardware is true
   simulated:
     moisture: 45
+
+# ------------------------------------------------------------------
+# Garden — monitored growing area and water budget targets.
+# ------------------------------------------------------------------
+# When use_area_based_budget is enabled under soil_moisture, the daily
+# watering budget is computed from these values:
+#   liters_per_day = area_sq_m × water_target_mm_per_day
+#   budget_seconds = (liters_per_day / pump_lph) × 3600
+# The area-based budget is a superset: it can only increase or match the
+# hardcoded max_watering_seconds_per_day, never reduce it below that floor.
+garden:
+  area_sq_m: 10.0           # monitored growing area in square meters
+  water_target_mm_per_day: 5.0   # target water depth per day (mm)
 
 # ------------------------------------------------------------------
 # Tanks — volume-based tracking (no level sensors required)

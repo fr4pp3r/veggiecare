@@ -174,9 +174,37 @@
           </div>
         </section>
 
+        <section id="garden" class="card collapsible">
+          <header class="card-header"><h2>Garden</h2></header>
+          <div class="card-body">
+            <div class="sensor-main">
+              <span class="label">Monitored area</span>
+              <span class="value large" id="garden-area">—</span><span class="unit"> m²</span>
+              <span class="state" id="garden-area-state">—</span>
+            </div>
+            <div class="sensor-grid">
+              <div class="sensor-item">
+                <span class="label">Daily water target</span>
+                <span class="value" id="garden-target">—</span><span class="unit"> mm</span>
+                <span class="threshold" id="garden-target-th">Target depth per day</span>
+              </div>
+              <div class="sensor-item">
+                <span class="label">Area-based budget</span>
+                <span class="value" id="garden-budget-mode">—</span>
+                <span class="state" id="garden-budget-state">—</span>
+              </div>
+            </div>
+            <p class="meta" id="garden-meta">Garden size and water budget settings.</p>
+          </div>
+        </section>
+
         <section id="npk" class="card collapsible">
           <header class="card-header"><h2>Soil Nutrients</h2></header>
           <div class="card-body">
+            <div class="npk-connection-status" id="npk-connection-status">
+              <span class="connection-dot" id="npk-connection-dot" aria-hidden="true"></span>
+              <span class="connection-text" id="npk-connection-text">Checking sensor…</span>
+            </div>
             <div class="sensor-grid">
               <div class="sensor-item" data-nutrient="nitrogen">
                 <span class="label">Nitrogen</span>
@@ -203,6 +231,9 @@
             <div class="card-actions">
               <button id="btn-relay1" class="btn btn-primary" disabled>Add plant food now</button>
               <span class="hint">Runs the plant food pump for <span id="r1-dur">—</span> seconds</span>
+            </div>
+            <div class="card-actions" style="margin-top: 0.5rem;">
+              <button id="btn-npk-read-now" class="btn btn-secondary btn-sm" type="button" title="Force an immediate NPK sensor read">Read NPK now</button>
             </div>
             <p class="meta" id="npk-meta">Last reading: —</p>
           </div>

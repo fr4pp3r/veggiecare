@@ -214,6 +214,8 @@ def _validate_soil_moisture(section: dict, errors: list[str], relay_ids: set[int
         _int(section, "max_consecutive_non_responses", errors, path, minimum=1)
     if "max_watering_seconds_per_day" in section:
         _number(section, "max_watering_seconds_per_day", errors, path, minimum=1)
+    if "use_area_based_budget" in section:
+        _bool(section, "use_area_based_budget", errors, path)
     simulated = _field(section, "simulated", dict, errors, path)
     if simulated is not None:
         _number(simulated, "moisture", errors, f"{path}.simulated", minimum=0, maximum=100)
@@ -569,6 +571,18 @@ def _validate_npk_recommendations(section: dict, errors: list[str]) -> None:
         _number(mock, "recommend_probability", errors, f"{path}.mock", minimum=0, maximum=1)
 
 
+def _validate_garden(section: dict, errors: list[str]) -> None:
+    """Validate the optional ``garden`` section."""
+    if not isinstance(section, dict):
+        errors.append("garden: must be a mapping")
+        return
+    path = "garden"
+    if "area_sq_m" in section:
+        _number(section, "area_sq_m", errors, path, minimum=0.001)
+    if "water_target_mm_per_day" in section:
+        _number(section, "water_target_mm_per_day", errors, path, minimum=0.001)
+
+
 def validate(cfg: dict) -> None:
     """Validate a configuration dict; raise ConfigError with all problems."""
     errors: list[str] = []
@@ -601,6 +615,10 @@ def validate(cfg: dict) -> None:
     moisture_cfg = _field(cfg, "soil_moisture", dict, errors, "config")
     if moisture_cfg is not None:
         _validate_soil_moisture(moisture_cfg, errors, relay_ids)
+
+    garden_cfg = _field(cfg, "garden", dict, errors, "config")
+    if garden_cfg is not None:
+        _validate_garden(garden_cfg, errors)
 
     pest_cfg = _field(cfg, "pest_detection", dict, errors, "config")
     if pest_cfg is not None:

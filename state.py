@@ -23,6 +23,16 @@ class SystemState:
         self.system_name = str(config["system"].get("name", "VeggieCare"))
         self.simulate_hardware = bool(config["system"].get("simulate_hardware", False))
 
+        # Garden config (area + water budget targets)
+        garden_cfg = config.get("garden", {}) if isinstance(config, dict) else {}
+        self.garden: dict[str, Any] = {
+            "area_sq_m": float(garden_cfg.get("area_sq_m", 10.0)),
+            "water_target_mm_per_day": float(garden_cfg.get("water_target_mm_per_day", 5.0)),
+        }
+        # Area-based budget flag (mirrors soil_moisture.use_area_based_budget)
+        moist_cfg = config.get("soil_moisture", {}) if isinstance(config, dict) else {}
+        self.use_area_based_budget = bool(moist_cfg.get("use_area_based_budget", False))
+
         # Latest NPK reading + threshold status
         self.npk: dict[str, Any] = {
             "nitrogen": None,
@@ -32,6 +42,8 @@ class SystemState:
             "timestamp": None,
             "last_success": None,
             "error": None,
+            "connected": False,
+            "available": True,
         }
 
         # Latest soil moisture reading
@@ -219,6 +231,11 @@ class SystemState:
             })
             if error is None:
                 self.npk["last_success"] = timestamp
+                self.npk["connected"] = True
+                self.npk["available"] = True
+            else:
+                self.npk["connected"] = False
+                self.npk["available"] = False
 
     def update_moisture(self, value: float, below: bool, timestamp: str,
                         error: str | None = None) -> None:
@@ -342,6 +359,8 @@ class SystemState:
                 "camera": dict(self.camera),
                 "db": dict(self.db),
                 "automation": dict(self.automation),
+                "garden": dict(self.garden),
+                "use_area_based_budget": self.use_area_based_budget,
                 "alerts": list(self._alerts),
                 "recommendation": dict(self.recommendation),
                 "tanks": {k: dict(v) for k, v in self.tanks.items()},
