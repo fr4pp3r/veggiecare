@@ -481,16 +481,19 @@
     const renderTank = (prefix, tank, relay, typeKey, lastUsedKey, extraRows) => {
       const status = tankStatus(tank);
       const statusEl = document.getElementById(`tank-${prefix}-status`);
-      statusEl.textContent = status;
-      statusEl.className = 'state ' +
-        (status === 'Ready' ? 'state-good' : status === 'Empty' ? 'state-bad' : 'state-warn');
+      if (statusEl) {
+        statusEl.textContent = status;
+        statusEl.className = 'state ' +
+          (status === 'Ready' ? 'state-good' : status === 'Empty' ? 'state-bad' : 'state-warn');
+      }
 
       const typeEl = document.getElementById(`tank-${prefix}-type`);
-      typeEl.textContent = tank[typeKey] || '-';
+      if (typeEl) typeEl.textContent = tank[typeKey] || '-';
 
       const remMl = tank.ml_remaining_est || 0;
       const remL = remMl / 1000;
-      document.getElementById(`tank-${prefix}-rem`).textContent = remL.toFixed(1) + ' L';
+      const remEl = document.getElementById(`tank-${prefix}-rem`);
+      if (remEl) remEl.textContent = remL.toFixed(1) + ' L';
 
       // Fill level bar: remaining / capacity
       const capacity = tank.tank_capacity_ml || 0;
@@ -504,23 +507,29 @@
       }
       if (fillPctEl) fillPctEl.textContent = capacity > 0 ? fillPct.toFixed(0) + '%' : '—';
 
-      document.getElementById(`tank-${prefix}-rt`).textContent =
-        '~' + mlToSec(remMl, tank.pump_lph).toFixed(1) + 's of run time left';
-      document.getElementById(`tank-${prefix}-lastref`).textContent = fmtDate(tank.last_refill_at);
-      document.getElementById(`tank-${prefix}-lastfert`).textContent = fmtDate(tank[lastUsedKey]);
-      document.getElementById(`tank-${prefix}-cool`).textContent = coolFmt(tank.cooldown_until_at);
-      document.getElementById(`tank-${prefix}-auto`).textContent = tank.auto_enabled ? 'On' : 'Off';
+      const rtEl = document.getElementById(`tank-${prefix}-rt`);
+      if (rtEl) rtEl.textContent = '~' + mlToSec(remMl, tank.pump_lph).toFixed(1) + 's of run time left';
+      const lastrefEl = document.getElementById(`tank-${prefix}-lastref`);
+      if (lastrefEl) lastrefEl.textContent = fmtDate(tank.last_refill_at);
+      const lastfertEl = document.getElementById(`tank-${prefix}-lastfert`);
+      if (lastfertEl) lastfertEl.textContent = fmtDate(tank[lastUsedKey]);
+      const coolEl = document.getElementById(`tank-${prefix}-cool`);
+      if (coolEl) coolEl.textContent = coolFmt(tank.cooldown_until_at);
+      const autoEl = document.getElementById(`tank-${prefix}-auto`);
+      if (autoEl) autoEl.textContent = tank.auto_enabled ? 'On' : 'Off';
 
       // Amount each use — derived, shown in L with the derivation inline
       const dose = dosePerUse(tank, relay);
       const doseEl = document.getElementById(`tank-${prefix}-dose`);
       const doseHintEl = document.getElementById(`tank-${prefix}-dose-hint`);
-      doseEl.textContent = dose.litres > 0 ? dose.litres.toFixed(1) + ' L per use' : '—';
+      if (doseEl) doseEl.textContent = dose.litres > 0 ? dose.litres.toFixed(1) + ' L per use' : '—';
       if (doseHintEl) doseHintEl.textContent = dose.hint ? '(' + dose.hint + ')' : '';
 
       const blockedEl = document.getElementById(`tank-${prefix}-blocked`);
-      blockedEl.textContent = tank.blocked_reason || '—';
-      blockedEl.classList.toggle('is-blocked', Boolean(tank.blocked_reason));
+      if (blockedEl) {
+        blockedEl.textContent = tank.blocked_reason || '—';
+        blockedEl.classList.toggle('is-blocked', Boolean(tank.blocked_reason));
+      }
 
       if (extraRows) extraRows(tank);
     };
@@ -529,16 +538,18 @@
     renderTank('fert', fert, relays?.find(r => r.id === 1),
       'fertilizer_type', 'last_fertilized_at',
       (t) => {
-        document.getElementById('tank-fert-npk').textContent =
-          (t.npk_n || 0) + '/' + (t.npk_p || 0) + '/' + (t.npk_k || 0);
-        document.getElementById('tank-fert-mode').textContent = t.mode === 'separate' ? 'Separate from watering' : 'Mixes with watering';
+        const npkEl = document.getElementById('tank-fert-npk');
+        if (npkEl) npkEl.textContent = (t.npk_n || 0) + '/' + (t.npk_p || 0) + '/' + (t.npk_k || 0);
+        const modeEl = document.getElementById('tank-fert-mode');
+        if (modeEl) modeEl.textContent = t.mode === 'separate' ? 'Separate from watering' : 'Mixes with watering';
       });
 
     const pest = tanks.pesticide || {};
     renderTank('pest', pest, relays?.find(r => r.id === 3),
       'pesticide_type', 'last_pesticided_at',
       (t) => {
-        document.getElementById('tank-pest-month').textContent = t.max_activations_per_month || '-';
+        const monthEl = document.getElementById('tank-pest-month');
+        if (monthEl) monthEl.textContent = t.max_activations_per_month || '-';
       });
   }
 
@@ -668,10 +679,14 @@
     const thresholdPct = pestThreshold != null ? Math.round(pestThreshold * 100) : 70;
 
     if (!pest || !pest.enabled || !pest.configured) {
-      els.pestStatus.textContent = pest && pest.enabled
-        ? 'Pest watch is on, but no detector model is loaded.'
-        : 'Pest watch is turned off.';
-      els.pestStatus.className = 'pest-status';
+      // Show the actual error if present (e.g. model failed to load)
+      const msg = pest && pest.enabled && pest.error
+        ? pest.error
+        : pest && pest.enabled
+          ? 'Pest watch is on, but no detector model is loaded.'
+          : 'Pest watch is turned off.';
+      els.pestStatus.textContent = msg;
+      els.pestStatus.className = 'pest-status' + (pest && pest.enabled && pest.error ? ' pest-outcome--error' : '');
       els.pestStatus.style.display = 'block';
       els.pestDetails.classList.add('hidden');
       els.pestScanActions.classList.add('hidden');
@@ -828,8 +843,9 @@
   function renderGarden(data) {
     const garden = data.garden;
     if (!garden) return;
-    const area = garden.area_sq_m;
-    const target = garden.water_target_mm_per_day;
+    const area = Number(garden.area_sq_m);
+    const target = Number(garden.water_target_mm_per_day);
+    if (!isFinite(area) || !isFinite(target)) return;
     const useArea = data.use_area_based_budget;
 
     if (els.gardenArea) els.gardenArea.textContent = area.toFixed(1);

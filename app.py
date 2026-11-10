@@ -209,7 +209,10 @@ def main() -> int:
             detector = MockDetector(pest_cfg)
         controller.attach_detector(detector)
         st = detector.status() if hasattr(detector, "status") else {"configured": True, "model": getattr(detector, "name", "unknown")}
-        state.update_pest(configured=st.get("configured", True), model=st.get("model"), error=None)
+        # Surface the detector's own load failure (e.g. missing ultralytics
+        # or weights) so the dashboard shows a real error instead of
+        # silently claiming "Pest watch is turned off".
+        state.update_pest(configured=st.get("configured", True), model=st.get("model"), error=None if st.get("configured") else "Pest model failed to load — check the app logs")
         log.info("Pest detector enabled (%s)", st.get("model", "detector"))
     else:
         state.update_pest(configured=False, model=None, error=None)
